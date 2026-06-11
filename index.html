@@ -73,6 +73,13 @@
   }
   button.apply:hover{background:rgba(52,224,196,.22);border-color:var(--phosphor)}
   button.apply:disabled{opacity:.35;cursor:not-allowed}
+  button.ghost{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text-dim);
+    font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    padding:0 10px;height:37px;border-radius:6px;cursor:pointer;transition:border-color .15s,color .15s;
+  }
+  button.ghost:hover:not(:disabled){border-color:var(--accent);color:var(--text)}
+  button.ghost:disabled{opacity:.35;cursor:not-allowed}
 
   /* drop zone */
   .drop{
@@ -231,6 +238,7 @@
         <div class="row">
           <input id="interval" type="number" step="0.0001" min="0" placeholder="auto">
           <span class="unit">ms</span>
+          <button class="ghost" id="autodetect" title="Detect Δt from the loaded capture" disabled>auto</button>
         </div>
       </div>
       <div class="ctl">
@@ -407,7 +415,8 @@ time
   var drop = $("drop"), fileInput = $("file"), loaded = $("loaded"),
       results = $("results"), note = $("note"),
       progress = $("progress"), pfill = $("pfill"), ptxt = $("ptxt"),
-      intervalIn = $("interval"), tolIn = $("tol"), closeIn = $("close"), applyBtn = $("apply");
+      intervalIn = $("interval"), tolIn = $("tol"), closeIn = $("close"),
+      applyBtn = $("apply"), autoBtn = $("autodetect");
 
   // ---------- parsing ----------
   var TS_RE = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?\s*(Z|[+-]\d{2}:?\d{2})?$/;
@@ -852,34 +861,48 @@ time
 
     ctx.strokeStyle = "rgba(52,224,196,.9)"; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(0, baseY); ctx.lineTo(w, baseY); ctx.stroke();
-    for(var gi=0; gi<gapEvents.length; gi++){
-      var gv = gapEvents[gi];
-      if(gv.end <= t0 || gv.start >= t1) continue;
-      var xa = ((gv.start - t0)/span)*w, xb = ((gv.end - t0)/span)*w;
-      if(xa < 0) xa = 0; if(xb > w) xb = w;
-      var wseg = xb - xa; if(wseg < 1.5) wseg = 1.5;
-      ctx.strokeStyle = spikeColor(gv.missing);
-      ctx.beginPath(); ctx.moveTo(xa, baseY); ctx.lineTo(xa + wseg, baseY); ctx.stroke();
-    }
     ctx.lineWidth = 1;
 
-    var maxMiss = 1, i;
-    for(i=0;i<col.cols;i++){
-      if(col.maxGap[i] > threshold){
-        var m = Math.max(1, Math.round(col.maxGap[i]/intervalNs)-1);
-        if(m > maxMiss) maxMiss = m;
-      }
+    // one upward line per missing message, placed at its expected arrival time
+    // (gap.start + k·Δt); height + colour reflect the parent gap's severity.
+    // When the expected spacing falls under ~2px the messages can't be resolved
+    // individually, so fall back to one spike per pixel column for that burst.
+    var maxMiss = 1, gi2, gv2;
+    for(gi2=0; gi2<gapEvents.length; gi2++){
+      gv2 = gapEvents[gi2];
+      if(gv2.end <= t0 || gv2.start >= t1) continue;
+      if(gv2.missing > maxMiss) maxMiss = gv2.missing;
     }
     var denom = Math.log10(maxMiss + 1) || 1;
+    var ghostPx = intervalNs > 0 ? (intervalNs/span)*w : 0;
+    var missHeight = function(m){ var hh = (Math.log10(m+1)/denom)*upSpan; return hh < 6 ? 6 : hh; };
 
     ctx.save();
-    for(var c2=0;c2<col.cols;c2++){
-      if(col.maxGap[c2] <= threshold) continue;
-      var miss = Math.max(1, Math.round(col.maxGap[c2]/intervalNs)-1);
-      var hgt = (Math.log10(miss+1)/denom) * upSpan; if(hgt < 5) hgt = 5;
-      var col2 = spikeColor(miss);
-      ctx.shadowColor = col2; ctx.shadowBlur = 6; ctx.strokeStyle = col2; ctx.lineWidth = 1.4;
-      ctx.beginPath(); ctx.moveTo(c2+0.5, baseY); ctx.lineTo(c2+0.5, baseY - hgt); ctx.stroke();
+    if(ghostPx >= 2){
+      for(gi2=0; gi2<gapEvents.length; gi2++){
+        gv2 = gapEvents[gi2];
+        if(gv2.end <= t0 || gv2.start >= t1) continue;
+        var c1 = spikeColor(gv2.missing), hgt1 = missHeight(gv2.missing);
+        ctx.shadowColor = c1; ctx.shadowBlur = 6; ctx.strokeStyle = c1; ctx.lineWidth = 1.4;
+        var kStart = Math.max(1, Math.ceil((t0 - gv2.start)/intervalNs));
+        var kEnd = Math.min(gv2.missing, Math.floor((t1 - gv2.start)/intervalNs));
+        ctx.beginPath();
+        for(var k=kStart; k<=kEnd; k++){
+          var et = gv2.start + k*intervalNs;
+          if(et >= gv2.end) break;
+          var xk = ((et - t0)/span)*w;
+          ctx.moveTo(xk+0.5, baseY); ctx.lineTo(xk+0.5, baseY - hgt1);
+        }
+        ctx.stroke();
+      }
+    } else {
+      for(var c2=0;c2<col.cols;c2++){
+        if(col.maxGap[c2] <= threshold) continue;
+        var miss = Math.max(1, Math.round(col.maxGap[c2]/intervalNs)-1);
+        var c2c = spikeColor(miss), hgt2 = missHeight(miss);
+        ctx.shadowColor = c2c; ctx.shadowBlur = 6; ctx.strokeStyle = c2c; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(c2+0.5, baseY); ctx.lineTo(c2+0.5, baseY - hgt2); ctx.stroke();
+      }
     }
     ctx.restore();
 
@@ -931,16 +954,32 @@ time
   // overlay anomaly regions on top of the raw plot
   function overlayAnomBands(ctx, w, h, t0, t1, span, col){
     var top = 6, bot = h - 6;
-    // dropouts: translucent red bands spanning the missing interval
+    // dropouts: one vertical line per missing message at its expected arrival
+    // time, coloured by gap severity; collapse to a faint band when sub-pixel dense
+    var ghostPx = intervalNs > 0 ? (intervalNs/span)*w : 0;
     for(var gi=0; gi<gapEvents.length; gi++){
       var gv = gapEvents[gi];
       if(gv.end <= t0 || gv.start >= t1) continue;
-      var xa = ((gv.start - t0)/span)*w, xb = ((gv.end - t0)/span)*w;
-      if(xa < 0) xa = 0; if(xb > w) xb = w;
-      var wseg = Math.max(1.5, xb - xa);
-      ctx.fillStyle = "rgba(255,84,112,.16)"; ctx.fillRect(xa, top, wseg, bot-top);
-      ctx.strokeStyle = "rgba(255,84,112,.7)"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(xa+0.5, top); ctx.lineTo(xa+0.5, bot); ctx.stroke();
+      if(ghostPx >= 2){
+        ctx.save();
+        ctx.strokeStyle = spikeColor(gv.missing); ctx.globalAlpha = 0.85; ctx.lineWidth = 1;
+        var kStart = Math.max(1, Math.ceil((t0 - gv.start)/intervalNs));
+        var kEnd = Math.min(gv.missing, Math.floor((t1 - gv.start)/intervalNs));
+        ctx.beginPath();
+        for(var k=kStart; k<=kEnd; k++){
+          var et = gv.start + k*intervalNs;
+          if(et >= gv.end) break;
+          var xk = ((et - t0)/span)*w;
+          ctx.moveTo(xk+0.5, top); ctx.lineTo(xk+0.5, bot);
+        }
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        var xa = ((gv.start - t0)/span)*w, xb = ((gv.end - t0)/span)*w;
+        if(xa < 0) xa = 0; if(xb > w) xb = w;
+        var wseg = Math.max(1.5, xb - xa);
+        ctx.fillStyle = "rgba(255,84,112,.16)"; ctx.fillRect(xa, top, wseg, bot-top);
+      }
     }
     // too-close: thin violet markers
     ctx.strokeStyle = "rgba(157,140,255,.55)"; ctx.lineWidth = 1;
@@ -1069,7 +1108,7 @@ time
     else note.style.display="none";
 
     // initialise / preserve the zoom window
-    minWindowNs = Math.max(intervalNs * 5, stats.durationNs * 1e-5) || intervalNs * 5;
+    minWindowNs = intervalNs * 5 || 1e6;   // uniform tightest zoom: ~5 samples, regardless of capture size
     if(viewEnd <= viewStart || viewEnd > stats.durationNs + 1 || viewStart < 0){
       viewStart = 0; viewEnd = stats.durationNs;   // reset to full on (re)load
     } else {
@@ -1371,6 +1410,43 @@ time
     });
   }
 
+  // ---------- settings persistence (localStorage) ----------
+  var STORAGE_KEY = "gapscope.settings";
+  function saveSettings(){
+    try{
+      var s = { tolerance: tolerance, closeNs: closeNs, showRaw: showRaw, showAnom: showAnom, showTs: showTs };
+      // persist a pinned Δt only when the user fixed one; auto-detect otherwise
+      if(intervalIn.dataset.auto === "no" && intervalNs > 0) s.intervalNs = intervalNs;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    }catch(e){ /* storage unavailable (private mode, etc.) — ignore */ }
+  }
+  function loadSettings(){
+    var s;
+    try{ s = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); }
+    catch(e){ s = null; }
+    if(!s) return;
+    if(typeof s.tolerance === "number" && s.tolerance >= 1) tolerance = s.tolerance;
+    if(typeof s.closeNs === "number" && s.closeNs >= 0) closeNs = s.closeNs;
+    if(typeof s.showRaw === "boolean") showRaw = s.showRaw;
+    if(typeof s.showAnom === "boolean") showAnom = s.showAnom;
+    if(typeof s.showTs === "boolean") showTs = s.showTs;
+    if(typeof s.intervalNs === "number" && s.intervalNs > 0){
+      intervalNs = s.intervalNs;
+      intervalIn.dataset.auto = "no";
+    }
+  }
+  // mirror the current settings (globals) into the on-screen controls
+  function reflectSettings(){
+    tolIn.value = tolerance;
+    closeIn.value = Math.round(closeNs/1e3);
+    $("show-raw").checked = showRaw;
+    $("show-anom").checked = showAnom;
+    $("show-ts").checked = showTs;
+    if(intervalIn.dataset.auto === "no" && intervalNs > 0){
+      intervalIn.value = (intervalNs/1e6).toPrecision(6).replace(/\.?0+$/,"");
+    }
+  }
+
   // ---------- file handling ----------
   function showError(msg){
     note.style.display = "block";
@@ -1422,6 +1498,7 @@ time
           $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs);
           loaded.style.display = "flex";
           applyBtn.disabled = false;
+          autoBtn.disabled = false;
           render();
         });
       }, 0);
@@ -1460,7 +1537,16 @@ time
     if(tv >= 1){ tolerance = tv; }
     var cv = parseFloat(closeIn.value);
     if(cv >= 0){ closeNs = cv*1e3; }
+    saveSettings();
     if(offsets.length >= 2) render();
+  });
+  // auto-detect Δt from the loaded capture (and clear any saved pin)
+  autoBtn.addEventListener("click", function(){
+    if(offsets.length < 2) return;
+    intervalNs = detectedNs;
+    intervalIn.dataset.auto = "yes";
+    saveSettings();
+    render();   // render() refreshes the Δt field from intervalNs
   });
   intervalIn.addEventListener("input", function(){ intervalIn.dataset.auto = "no"; });
   [intervalIn, tolIn, closeIn].forEach(function(el){
@@ -1474,9 +1560,9 @@ time
   });
 
   // view-layer toggles
-  $("show-raw").addEventListener("change", function(){ showRaw = this.checked; refreshView(); });
-  $("show-anom").addEventListener("change", function(){ showAnom = this.checked; refreshView(); });
-  $("show-ts").addEventListener("change", function(){ showTs = this.checked; refreshView(); });
+  $("show-raw").addEventListener("change", function(){ showRaw = this.checked; saveSettings(); refreshView(); });
+  $("show-anom").addEventListener("change", function(){ showAnom = this.checked; saveSettings(); refreshView(); });
+  $("show-ts").addEventListener("change", function(){ showTs = this.checked; saveSettings(); refreshView(); });
 
   // redraw on resize
   var rt;
@@ -1485,6 +1571,10 @@ time
     clearTimeout(rt);
     rt = setTimeout(function(){ drawTrace(); drawHeat(); }, 120);
   });
+
+  // restore persisted settings and reflect them into the controls
+  loadSettings();
+  reflectSettings();
 
   bindHover();
 })();

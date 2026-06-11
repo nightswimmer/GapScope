@@ -6,9 +6,10 @@ Drop a CSV with a timestamp column and GAPSCOPE tells you whether your stream is
 
 ## Features
 
-- **Dropout detection** — finds gaps larger than a configurable threshold (× nominal Δt) and estimates how many samples are missing in each.
+- **Dropout detection** — finds gaps larger than a configurable threshold (× nominal Δt) and estimates how many samples are missing in each. Each missing message is drawn as its own line at its expected arrival time, colored by gap severity (collapsing to a single mark per pixel when too dense to resolve).
 - **Too-close detection** — flags arrivals spaced under a configurable floor (default 900 µs), useful for catching duplicated or jittered timestamps.
-- **Auto interval detection** — infers the nominal sample interval (Δt) from the median gap; can be overridden manually.
+- **Auto interval detection** — infers the nominal sample interval (Δt) from the median gap; can be overridden manually, with an **auto** button to re-detect on demand.
+- **Persisted settings** — thresholds, trace toggles, and a pinned Δt are saved to the browser's local storage and restored automatically on the next visit.
 - **Interactive trace** — zoom (scroll), pan (drag), and reset (double-click) over the full capture. Hover for an exact readout, including the Δt between bracketing anomalies.
 - **Per-sample timestamps** — an optional layer that draws a vertical line at every sample, alongside the anomaly marks in a distinct color. Dense regions collapse to one line per pixel column (the same way anomaly spikes do) and resolve into individual lines as you zoom in. On hover you get the spacing between the bracketing samples with a double-headed measurement arrow — shown together with the event-spacing arrow when anomalies are also visible.
 - **Coverage heatmap** — a full-capture minimap showing sample density per slice; click or drag to navigate the trace.

@@ -17,6 +17,9 @@ The whole application lives in **one file**: [index.html](index.html) (HTML + CS
 - **Nanosecond precision** — timestamps are parsed to exact ns using BigInt; offsets from the first sample are stored as Numbers.
 - **Trace layers** — three independent toggles drive the trace canvas: `showRaw` (per-channel value plots), `showAnom` (dropout/too-close spikes + heatmap + tables), and `showTs` (a vertical line per sample). They compose; `showTs` lines are drawn under the anomaly/raw layers and collapse to one line per pixel column via the same `columns()` aggregation the spikes use.
 - **Measurement arrows** — on hover, double-headed arrows on the overlay canvas show the Δt between the items bracketing the cursor: between events (when `showAnom`, accent blue) and/or between samples (when `showTs`, steel blue). Both can show at once, offset vertically.
+- **Per-missing-message rendering** — a dropout is drawn as one line per missing message at its expected arrival time (`gap.start + k·Δt`), not as a single band spanning the gap. Lines are colored/height-scaled by the parent gap's severity (`spikeColor` + log scale). Below ~2px expected spacing the burst collapses to one spike per pixel column. Applies to both `drawAnomBipolar` and the raw-mode `overlayAnomBands`.
+- **Settings persistence** — `tolerance`, `closeNs`, the three toggles, and a *pinned* Δt are saved to `localStorage` (`gapscope.settings`) and restored on load (`saveSettings`/`loadSettings`/`reflectSettings`). Δt auto-detects when no pin is saved; the **auto** button re-detects on demand and clears the pin.
+- **Zoom depth** — tightest window is `intervalNs * 5` (~5 samples), uniform regardless of capture size (no duration-relative floor).
 
 ## File / code map (index.html)
 
@@ -34,7 +37,8 @@ The whole application lives in **one file**: [index.html](index.html) (HTML + CS
 ## Current state
 
 - Fully functional single-file tool.
-- Initial commit done. Latest work added the **Show All Timestamps** trace layer (`showTs`) with per-sample vertical lines and inter-sample measurement arrows in the hover popup, including dual arrows when anomalies are also shown.
+- Initial commit done. Subsequent work added the **Show All Timestamps** trace layer (`showTs`) with per-sample vertical lines and inter-sample measurement arrows (dual arrows when anomalies are also shown).
+- This session added: **localStorage settings persistence** + an **auto-detect Δt** button, **uniform zoom depth** regardless of capture size, and **per-missing-message dropout rendering** (one severity-colored line per missing message at its expected time, replacing the spanning band).
 
 ## Conventions / preferences
 
