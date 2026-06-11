@@ -255,6 +255,13 @@
           <span class="unit">µs</span>
         </div>
       </div>
+      <div class="ctl">
+        <label for="chunk">Read chunk</label>
+        <div class="row">
+          <input id="chunk" type="number" step="1" min="1" value="8" title="Byte-slice size used when streaming the file in (applies to the next load)">
+          <span class="unit">MB</span>
+        </div>
+      </div>
       <button class="apply" id="apply" disabled>Apply</button>
     </div>
   </div>
@@ -309,7 +316,7 @@ time
           <label class="chk"><input type="checkbox" id="show-ts"> Show All Timestamps</label>
         </div>
         <div class="zoom-ctl">
-          <span class="hint">scroll to zoom · drag to pan · double-click to reset</span>
+          <span class="hint">scroll to zoom · drag to select · right-drag to pan · double-click to reset</span>
           <span class="zlevel" id="zlevel">1.0×</span>
           <button class="zreset" id="zreset">Reset</button>
         </div>
@@ -455,55 +462,87 @@ time
     viewStart = 0; viewEnd = 0;   // force full-extent view for the new capture
   }
 
-  function processLines(lines){
-    return new Promise(function(resolve){
-      var CHUNK = 40000, i = 0, n = lines.length, started = false, prev = null;
-      var headerFields = null;
-      function step(){
-        var end = Math.min(i + CHUNK, n);
-        for(; i < end; i++){
-          var raw = lines[i];
-          if(!raw) continue;
-          var parts = raw.split(",");
-          var field = parts[0].trim();
-          if(!field) continue;
-          var ts = parseTsNs(field);
-          if(ts === null){
-            if(!started){ if(!headerFields) headerFields = parts; continue; } // header / preamble
-            malformed++; continue;
-          }
-          if(!started){
-            started = true; firstNs = ts;
-            channelCount = Math.max(0, parts.length - 1);
-            for(var ci=0; ci<channelCount; ci++){
-              channels[ci] = [];
-              chMin[ci] = Infinity; chMax[ci] = -Infinity;
-              var nm = (headerFields && headerFields[ci+1] != null) ? headerFields[ci+1].trim() : "";
-              channelNames[ci] = nm || ("ch"+ci);
-            }
-          }
-          var off = Number(ts - firstNs);
-          if(prev !== null){
-            var g = off - prev;
-            if(g < 0){ outOfOrder++; }
-            else if(g === 0){ duplicates++; }
-            gaps.push(g);
-          }
-          offsets.push(off);
-          for(var k=0; k<channelCount; k++){
-            var v = k+1 < parts.length ? parseFloat(parts[k+1]) : NaN;
-            channels[k].push(v);
-            if(v === v){ if(v < chMin[k]) chMin[k] = v; if(v > chMax[k]) chMax[k] = v; } // v===v excludes NaN
-          }
-          prev = off;
+  // Per-line parser. Holds parse state (header detection, ordering) across
+  // chunk boundaries so the file can be fed one line at a time as it streams in.
+  function makeLineParser(){
+    var started = false, prev = null, headerFields = null;
+    function feed(raw){
+      if(!raw) return;
+      var parts = raw.split(",");
+      var field = parts[0].trim();
+      if(!field) return;
+      var ts = parseTsNs(field);
+      if(ts === null){
+        if(!started){ if(!headerFields) headerFields = parts; return; } // header / preamble
+        malformed++; return;
+      }
+      if(!started){
+        started = true; firstNs = ts;
+        channelCount = Math.max(0, parts.length - 1);
+        for(var ci=0; ci<channelCount; ci++){
+          channels[ci] = [];
+          chMin[ci] = Infinity; chMax[ci] = -Infinity;
+          var nm = (headerFields && headerFields[ci+1] != null) ? headerFields[ci+1].trim() : "";
+          channelNames[ci] = nm || ("ch"+ci);
         }
-        var frac = n ? i/n : 1;
+      }
+      var off = Number(ts - firstNs);
+      if(prev !== null){
+        var g = off - prev;
+        if(g < 0){ outOfOrder++; }
+        else if(g === 0){ duplicates++; }
+        gaps.push(g);
+      }
+      offsets.push(off);
+      for(var k=0; k<channelCount; k++){
+        var v = k+1 < parts.length ? parseFloat(parts[k+1]) : NaN;
+        channels[k].push(v);
+        if(v === v){ if(v < chMin[k]) chMin[k] = v; if(v > chMax[k]) chMax[k] = v; } // v===v excludes NaN
+      }
+      prev = off;
+    }
+    return { feed: feed };
+  }
+
+  // Stream the file in byte chunks so we never hold the whole file as one
+  // string (V8 caps strings at ~512 MB) nor build one giant lines array.
+  // Each slice is decoded incrementally with a streaming TextDecoder — which
+  // also stitches multi-byte UTF-8 chars split across chunk boundaries — then
+  // split into lines, carrying the trailing partial line into the next chunk.
+  function streamParse(file){
+    return new Promise(function(resolve, reject){
+      var chunkMB = parseFloat($("chunk").value);
+      if(!(chunkMB > 0)) chunkMB = 8;
+      var CHUNK = Math.round(chunkMB * 1024 * 1024);   // byte-slice size (tunable)
+      var parser = makeLineParser();
+      var decoder = new TextDecoder("utf-8");
+      var tail = "";                 // incomplete final line carried between chunks
+      var pos = 0;
+      var total = file.size || 0;
+      var fr = new FileReader();
+      fr.onerror = function(){ reject(fr.error || new Error("read error")); };
+      fr.onload = function(){
+        var bytes = new Uint8Array(fr.result);
+        var last = pos >= total;
+        var combined = tail + decoder.decode(bytes, { stream: !last });
+        var lines = combined.split(/\r?\n/);
+        // While more chunks remain, the last element is a partial line; on the
+        // final chunk every element is complete (a trailing "" is ignored).
+        tail = last ? "" : lines.pop();
+        for(var j=0; j<lines.length; j++) parser.feed(lines[j]);
+        var frac = total ? pos/total : 1;
         pfill.style.width = (frac*100).toFixed(1) + "%";
         ptxt.textContent = "Scanning samples… " + offsets.length.toLocaleString();
-        if(i < n){ setTimeout(step, 0); }
-        else resolve();
+        if(last) resolve();
+        else setTimeout(readNext, 0);   // yield to the UI thread between chunks
+      };
+      function readNext(){
+        var end = Math.min(pos + CHUNK, total);
+        var slice = file.slice(pos, end);
+        pos = end;
+        fr.readAsArrayBuffer(slice);
       }
-      step();
+      readNext();
     });
   }
 
@@ -661,6 +700,31 @@ time
   }
   function clearOverlay(){
     var o = overlaySetup(); if(o) o.ctx.clearRect(0,0,o.w,o.h);
+  }
+  // shaded band + edges marking a left-drag zoom selection, with a span label
+  function drawSelection(xa, xb){
+    var o = overlaySetup(); if(!o) return;
+    var x0 = Math.max(0, Math.min(o.w, Math.min(xa, xb)));
+    var x1 = Math.max(0, Math.min(o.w, Math.max(xa, xb)));
+    var ctx = o.ctx;
+    ctx.clearRect(0, 0, o.w, o.h);
+    ctx.fillStyle = "rgba(52,224,196,.12)";
+    ctx.fillRect(x0, 0, x1-x0, o.h);
+    ctx.strokeStyle = "rgba(52,224,196,.85)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x0+0.5, 0); ctx.lineTo(x0+0.5, o.h);
+    ctx.moveTo(x1-0.5, 0); ctx.lineTo(x1-0.5, o.h);
+    ctx.stroke();
+    // span label centred over the band
+    var span = viewEnd - viewStart;
+    var label = fmtGap(((x1-x0)/o.w) * span);
+    ctx.font = '11px ui-monospace,monospace';
+    var tw = ctx.measureText(label).width;
+    var mx = Math.max(tw/2+8, Math.min(o.w-tw/2-8, (x0+x1)/2));
+    ctx.fillStyle = "rgba(6,10,16,.88)"; ctx.strokeStyle = "rgba(52,224,196,.55)"; ctx.lineWidth = 1;
+    roundRect(ctx, mx-tw/2-6, 6, tw+12, 17, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#e6eefc"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, mx, 14.5);
   }
   // one double-headed measurement arrow between two points, in colour `rgb`
   // ("r,g,b"), with dashed vertical guides and a Δt label, at vertical y
@@ -1199,8 +1263,9 @@ time
     var traceRO = $("trace-ro"), traceCv = $("trace");
     var heatRO = $("heat-ro"), heatCv = $("heat");
 
-    // panning state (trace)
+    // panning state (trace, right button) + zoom-selection state (left button)
     var panning = false, panStartX = 0, panVS = 0, panVE = 0;
+    var selecting = false, selStartX = 0;
     // minimap drag state (heat)
     var hmDown = false, hmDownX = 0, hmMoved = false;
 
@@ -1303,11 +1368,11 @@ time
     }
 
     traceCv.addEventListener("mousemove", function(ev){
-      if(panning) return;            // handled on window while dragging
+      if(panning || selecting) return;   // handled on window while dragging
       var rect = traceCv.getBoundingClientRect();
       showTraceReadout(ev.clientX - rect.left, ev.clientY - rect.top);
     });
-    traceCv.addEventListener("mouseleave", function(){ if(!panning){ traceRO.style.opacity = 0; clearOverlay(); } });
+    traceCv.addEventListener("mouseleave", function(){ if(!panning && !selecting){ traceRO.style.opacity = 0; clearOverlay(); } });
 
     // ---- trace: wheel zoom (anchored at cursor) ----
     traceCv.addEventListener("wheel", function(ev){
@@ -1328,15 +1393,21 @@ time
       scheduleDraw();
     }, { passive: false });
 
-    // ---- trace: drag to pan ----
+    // ---- trace: left-drag to select a zoom region, right-drag to pan ----
     traceCv.addEventListener("mousedown", function(ev){
       if(!stats) return;
-      panning = true; panStartX = ev.clientX; panVS = viewStart; panVE = viewEnd;
-      traceCv.style.cursor = "grabbing";
+      if(ev.button === 2){
+        panning = true; panStartX = ev.clientX; panVS = viewStart; panVE = viewEnd;
+        traceCv.style.cursor = "grabbing";
+      } else if(ev.button === 0){
+        selecting = true; selStartX = ev.clientX - traceCv.getBoundingClientRect().left;
+      } else return;
       traceRO.style.opacity = 0;
       clearOverlay();
       ev.preventDefault();
     });
+    // right button is the pan gesture — suppress the browser context menu
+    traceCv.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });
     traceCv.addEventListener("dblclick", function(){
       if(!stats) return;
       viewStart = 0; viewEnd = stats.durationNs; scheduleDraw();
@@ -1379,6 +1450,9 @@ time
         viewStart = panVS + dt; viewEnd = panVE + dt;
         clampView();
         scheduleDraw();
+      } else if(selecting){
+        var trect = traceCv.getBoundingClientRect();
+        drawSelection(selStartX, ev.clientX - trect.left);
       } else if(hmDown){
         var hrect = heatCv.getBoundingClientRect();
         var x = ev.clientX - hrect.left;
@@ -1393,6 +1467,22 @@ time
     });
     window.addEventListener("mouseup", function(ev){
       if(panning){ panning = false; traceCv.style.cursor = "crosshair"; }
+      if(selecting){
+        selecting = false;
+        clearOverlay();
+        var trect = traceCv.getBoundingClientRect();
+        var xa = Math.max(0, Math.min(trect.width, selStartX));
+        var xb = Math.max(0, Math.min(trect.width, ev.clientX - trect.left));
+        if(Math.abs(xb - xa) > 4 && stats){
+          var span = viewEnd - viewStart;
+          var a = viewStart + (Math.min(xa, xb)/trect.width)*span;
+          var b = viewStart + (Math.max(xa, xb)/trect.width)*span;
+          var mid = (a + b)/2, newSpan = b - a;
+          if(newSpan < minWindowNs) newSpan = minWindowNs;   // respect the zoom floor
+          viewStart = mid - newSpan/2; viewEnd = mid + newSpan/2;
+          clampView(); scheduleDraw();
+        }
+      }
       if(hmDown){
         if(!hmMoved){
           // click: recentre current window on the clicked time
@@ -1414,7 +1504,7 @@ time
   var STORAGE_KEY = "gapscope.settings";
   function saveSettings(){
     try{
-      var s = { tolerance: tolerance, closeNs: closeNs, showRaw: showRaw, showAnom: showAnom, showTs: showTs };
+      var s = { tolerance: tolerance, closeNs: closeNs, showRaw: showRaw, showAnom: showAnom, showTs: showTs, chunkMB: parseFloat($("chunk").value) || 8 };
       // persist a pinned Δt only when the user fixed one; auto-detect otherwise
       if(intervalIn.dataset.auto === "no" && intervalNs > 0) s.intervalNs = intervalNs;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
@@ -1430,6 +1520,7 @@ time
     if(typeof s.showRaw === "boolean") showRaw = s.showRaw;
     if(typeof s.showAnom === "boolean") showAnom = s.showAnom;
     if(typeof s.showTs === "boolean") showTs = s.showTs;
+    if(typeof s.chunkMB === "number" && s.chunkMB > 0) $("chunk").value = s.chunkMB;
     if(typeof s.intervalNs === "number" && s.intervalNs > 0){
       intervalNs = s.intervalNs;
       intervalIn.dataset.auto = "no";
@@ -1463,16 +1554,11 @@ time
     progress.style.display = "block";
     pfill.style.width = "0%";
     ptxt.textContent = "Reading " + file.name + "…";
+    var loadStart = performance.now();
 
-    var reader = new FileReader();
-    reader.onerror = function(){ progress.style.display="none"; drop.style.display="block"; showError("Could not read that file."); };
-    reader.onload = function(){
-      var text = reader.result;
-      ptxt.textContent = "Splitting lines…";
-      resetData();
-      setTimeout(function(){
-        var lines = text.split(/\r?\n/);
-        processLines(lines).then(function(){
+    resetData();
+    setTimeout(function(){
+        streamParse(file).then(function(){
           progress.style.display = "none";
           if(offsets.length < 2){
             drop.style.display = "block";
@@ -1494,16 +1580,19 @@ time
           var cv0 = parseFloat(closeIn.value);
           if(cv0 >= 0) closeNs = cv0*1e3;
 
+          var loadMs = performance.now() - loadStart;
+          var loadStr = loadMs >= 1000 ? (loadMs/1000).toFixed(2)+" s" : Math.round(loadMs)+" ms";
           $("fname").textContent = file.name;
-          $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs);
+          $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)+" · loaded in "+loadStr;
           loaded.style.display = "flex";
           applyBtn.disabled = false;
           autoBtn.disabled = false;
           render();
+        }).catch(function(){
+          progress.style.display = "none"; drop.style.display = "block";
+          showError("Could not read that file.");
         });
-      }, 0);
-    };
-    reader.readAsText(file);
+    }, 0);
   }
 
   // drag/drop + click
@@ -1549,6 +1638,8 @@ time
     render();   // render() refreshes the Δt field from intervalNs
   });
   intervalIn.addEventListener("input", function(){ intervalIn.dataset.auto = "no"; });
+  // chunk size only affects the next file load — persist it, no re-render needed
+  $("chunk").addEventListener("change", saveSettings);
   [intervalIn, tolIn, closeIn].forEach(function(el){
     el.addEventListener("keydown", function(e){ if(e.key === "Enter") applyBtn.click(); });
   });

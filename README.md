@@ -9,8 +9,9 @@ Drop a CSV with a timestamp column and GAPSCOPE tells you whether your stream is
 - **Dropout detection** — finds gaps larger than a configurable threshold (× nominal Δt) and estimates how many samples are missing in each. Each missing message is drawn as its own line at its expected arrival time, colored by gap severity (collapsing to a single mark per pixel when too dense to resolve).
 - **Too-close detection** — flags arrivals spaced under a configurable floor (default 900 µs), useful for catching duplicated or jittered timestamps.
 - **Auto interval detection** — infers the nominal sample interval (Δt) from the median gap; can be overridden manually, with an **auto** button to re-detect on demand.
-- **Persisted settings** — thresholds, trace toggles, and a pinned Δt are saved to the browser's local storage and restored automatically on the next visit.
-- **Interactive trace** — zoom (scroll), pan (drag), and reset (double-click) over the full capture. Hover for an exact readout, including the Δt between bracketing anomalies.
+- **Large-file streaming** — the capture is read in byte-sized chunks and parsed incrementally, so it never has to fit in a single JavaScript string (which caps out around 512 MB). Multi-gigabyte files open, bounded only by the sample count. The chunk size is exposed as a **Read chunk** control (MB) for tuning throughput, and the loaded-file line reports how long the read+parse took.
+- **Persisted settings** — thresholds, trace toggles, the read chunk size, and a pinned Δt are saved to the browser's local storage and restored automatically on the next visit.
+- **Interactive trace** — scroll to zoom, **left-drag to select a region to zoom into**, **right-drag to pan**, and double-click to reset. Hover for an exact readout, including the Δt between bracketing anomalies.
 - **Per-sample timestamps** — an optional layer that draws a vertical line at every sample, alongside the anomaly marks in a distinct color. Dense regions collapse to one line per pixel column (the same way anomaly spikes do) and resolve into individual lines as you zoom in. On hover you get the spacing between the bracketing samples with a double-headed measurement arrow — shown together with the event-spacing arrow when anomalies are also visible.
 - **Coverage heatmap** — a full-capture minimap showing sample density per slice; click or drag to navigate the trace.
 - **Raw data overlay** — plots each data channel (min/max-decimated) alongside the anomaly view, with per-channel value ranges.
@@ -49,7 +50,7 @@ Supported timestamp forms: `YYYY-MM-DD HH:MM:SS[.fraction][±HH:MM | Z]` (space 
 
 ## How it works
 
-The entire tool is contained in [index.html](index.html) — HTML, CSS, and vanilla JavaScript with no dependencies. The capture is parsed in chunks (to keep the UI responsive on large files), timestamps are converted to nanosecond offsets from the first sample, and gaps between consecutive samples drive the anomaly detection. Rendering uses per-pixel column aggregation on `<canvas>`, so it stays fast even with millions of samples.
+The entire tool is contained in [index.html](index.html) — HTML, CSS, and vanilla JavaScript with no dependencies. The capture is **streamed in byte-sized chunks** (decoded with a streaming `TextDecoder` that stitches lines across chunk boundaries) and parsed incrementally, which keeps the UI responsive and removes the single-string size ceiling on large files. Timestamps are converted to nanosecond offsets from the first sample, and gaps between consecutive samples drive the anomaly detection. Rendering uses per-pixel column aggregation on `<canvas>`, so it stays fast even with millions of samples.
 
 Because it's a self-contained file, you can save it and reuse it entirely offline.
 

@@ -20,6 +20,8 @@ The whole application lives in **one file**: [index.html](index.html) (HTML + CS
 - **Per-missing-message rendering** — a dropout is drawn as one line per missing message at its expected arrival time (`gap.start + k·Δt`), not as a single band spanning the gap. Lines are colored/height-scaled by the parent gap's severity (`spikeColor` + log scale). Below ~2px expected spacing the burst collapses to one spike per pixel column. Applies to both `drawAnomBipolar` and the raw-mode `overlayAnomBands`.
 - **Settings persistence** — `tolerance`, `closeNs`, the three toggles, and a *pinned* Δt are saved to `localStorage` (`gapscope.settings`) and restored on load (`saveSettings`/`loadSettings`/`reflectSettings`). Δt auto-detects when no pin is saved; the **auto** button re-detects on demand and clears the pin.
 - **Zoom depth** — tightest window is `intervalNs * 5` (~5 samples), uniform regardless of capture size (no duration-relative floor).
+- **Chunked streaming load** — files are read as 8 MB (tunable) byte slices via `file.slice` + `FileReader.readAsArrayBuffer`, decoded with a streaming `TextDecoder` that carries an incomplete trailing line (`tail`) across chunk boundaries, and fed line-by-line into `makeLineParser().feed()`. This avoids both the V8 ~512 MB single-string cap (`readAsText`) and a giant lines array, so max file size is now bounded by sample-count memory, not raw bytes. The **Read chunk** control (`#chunk`, MB) is persisted in settings and read at the start of each load. The loaded-file meta line reports a `loaded in <ms/s>` read+parse time (measured from `performance.now()` at `handleFile` start) for benchmarking.
+- **Trace navigation** — scroll = wheel-zoom anchored at cursor; **left-drag = select a region to zoom into** (shaded phosphor band + span label drawn via `drawSelection` on the overlay; drags < 4px ignored; selections narrower than `minWindowNs` expand to that floor around the midpoint); **right-drag = pan** (with `contextmenu` suppressed on the trace canvas); double-click = reset to full extent. The heatmap minimap keeps its own left-click/drag navigation.
 
 ## File / code map (index.html)
 
@@ -27,10 +29,10 @@ The whole application lives in **one file**: [index.html](index.html) (HTML + CS
 - **Markup** — drop zone, loaded bar, progress, results (verdict, stat grid, trace, heatmap, dropout table, tight-spacing table) — lines ~209–372.
 - **JS** (IIFE, `"use strict"`) — lines ~374 onward:
   - **State** — globals for offsets, gaps, channels, stats, view window.
-  - **Parsing** — `parseTsNs` (timestamp → BigInt ns), `processLines` (chunked parse), `median`.
+  - **Parsing** — `parseTsNs` (timestamp → BigInt ns), `makeLineParser` (stateful per-line feeder), `streamParse` (chunked byte-slice reader + streaming decode), `median`.
   - **Analysis** — `analyze` builds `gapEvents`, `tightEvents`, merged `eventList`, and `stats`.
   - **Formatting** — `fmtGap`, `fmtDuration`, `absClock`, `absDate`, `absSecNum`, etc.
-  - **Canvas** — `columns` / `channelColumns` (per-pixel aggregation), `drawTrace`, `drawAnomBipolar`, `drawRawChannels`, `overlayAnomBands`, `drawAllTimestamps`, `drawHeat`, `drawOneArrow` / `drawMeasureArrows`.
+  - **Canvas** — `columns` / `channelColumns` (per-pixel aggregation), `drawTrace`, `drawAnomBipolar`, `drawRawChannels`, `overlayAnomBands`, `drawAllTimestamps`, `drawHeat`, `drawOneArrow` / `drawMeasureArrows`, `drawSelection` (zoom-select band).
   - **Render** — `render`, `renderTable`, `renderTightTable`, `buildChannelLegend`, `applyViewVisibility`.
   - **Interaction** — `bindHover` (hover readouts, measurement arrows, wheel zoom, drag pan, heatmap navigation), file handling, apply/reset/toggle handlers, resize.
 
@@ -38,7 +40,8 @@ The whole application lives in **one file**: [index.html](index.html) (HTML + CS
 
 - Fully functional single-file tool.
 - Initial commit done. Subsequent work added the **Show All Timestamps** trace layer (`showTs`) with per-sample vertical lines and inter-sample measurement arrows (dual arrows when anomalies are also shown).
-- This session added: **localStorage settings persistence** + an **auto-detect Δt** button, **uniform zoom depth** regardless of capture size, and **per-missing-message dropout rendering** (one severity-colored line per missing message at its expected time, replacing the spanning band).
+- A prior session added: **localStorage settings persistence** + an **auto-detect Δt** button, **uniform zoom depth** regardless of capture size, and **per-missing-message dropout rendering** (one severity-colored line per missing message at its expected time, replacing the spanning band).
+- This session added: **chunked streaming file load** (`makeLineParser` + `streamParse`) replacing the `readAsText`-then-`split` path, lifting the ~512 MB single-string ceiling so multi-GB captures open; a **Read chunk (MB)** tunable + persisted setting; a **`loaded in …` read-time readout** on the file meta line for benchmarking; and **new trace navigation** — left-drag selects a region to zoom into, right-drag pans (browser context menu suppressed).
 
 ## Conventions / preferences
 
