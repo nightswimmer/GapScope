@@ -10,6 +10,7 @@ Drop a CSV with a timestamp column and GAPSCOPE tells you whether your stream is
 - **Too-close detection** — flags arrivals spaced under a configurable floor (default 900 µs), useful for catching duplicated or jittered timestamps.
 - **Auto interval detection** — infers the nominal sample interval (Δt) from the median gap; can be overridden manually.
 - **Interactive trace** — zoom (scroll), pan (drag), and reset (double-click) over the full capture. Hover for an exact readout, including the Δt between bracketing anomalies.
+- **Per-sample timestamps** — an optional layer that draws a vertical line at every sample, alongside the anomaly marks in a distinct color. Dense regions collapse to one line per pixel column (the same way anomaly spikes do) and resolve into individual lines as you zoom in. On hover you get the spacing between the bracketing samples with a double-headed measurement arrow — shown together with the event-spacing arrow when anomalies are also visible.
 - **Coverage heatmap** — a full-capture minimap showing sample density per slice; click or drag to navigate the trace.
 - **Raw data overlay** — plots each data channel (min/max-decimated) alongside the anomaly view, with per-channel value ranges.
 - **Largest dropouts / tightest spacings tables** — ranked lists of the worst events with timestamps and elapsed times.
@@ -21,6 +22,7 @@ Drop a CSV with a timestamp column and GAPSCOPE tells you whether your stream is
 1. Open `index.html` in any modern browser (no server, no build step).
 2. Drag a capture file onto the drop zone, or click to browse.
 3. Adjust **Nominal Δt**, **Gap threshold**, and **Too-close** settings, then click **Apply** to re-analyze.
+4. Toggle the trace layers — **Show Raw Data**, **Show Anomalies**, **Show All Timestamps** — independently.
 
 ### Input format
 

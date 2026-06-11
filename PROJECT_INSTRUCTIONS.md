@@ -15,6 +15,8 @@ The whole application lives in **one file**: [index.html](index.html) (HTML + CS
 - **Too-close threshold** — a floor (default 900 µs) below which a spacing is flagged as suspiciously tight.
 - **Time modes** — absolute (epoch/wall-clock UTC) vs. relative (elapsed seconds), auto-detected: a first sample beyond ~1973 in epoch terms is treated as absolute.
 - **Nanosecond precision** — timestamps are parsed to exact ns using BigInt; offsets from the first sample are stored as Numbers.
+- **Trace layers** — three independent toggles drive the trace canvas: `showRaw` (per-channel value plots), `showAnom` (dropout/too-close spikes + heatmap + tables), and `showTs` (a vertical line per sample). They compose; `showTs` lines are drawn under the anomaly/raw layers and collapse to one line per pixel column via the same `columns()` aggregation the spikes use.
+- **Measurement arrows** — on hover, double-headed arrows on the overlay canvas show the Δt between the items bracketing the cursor: between events (when `showAnom`, accent blue) and/or between samples (when `showTs`, steel blue). Both can show at once, offset vertically.
 
 ## File / code map (index.html)
 
@@ -25,14 +27,14 @@ The whole application lives in **one file**: [index.html](index.html) (HTML + CS
   - **Parsing** — `parseTsNs` (timestamp → BigInt ns), `processLines` (chunked parse), `median`.
   - **Analysis** — `analyze` builds `gapEvents`, `tightEvents`, merged `eventList`, and `stats`.
   - **Formatting** — `fmtGap`, `fmtDuration`, `absClock`, `absDate`, `absSecNum`, etc.
-  - **Canvas** — `columns` / `channelColumns` (per-pixel aggregation), `drawTrace`, `drawAnomBipolar`, `drawRawChannels`, `overlayAnomBands`, `drawHeat`, `drawMeasureArrow`.
+  - **Canvas** — `columns` / `channelColumns` (per-pixel aggregation), `drawTrace`, `drawAnomBipolar`, `drawRawChannels`, `overlayAnomBands`, `drawAllTimestamps`, `drawHeat`, `drawOneArrow` / `drawMeasureArrows`.
   - **Render** — `render`, `renderTable`, `renderTightTable`, `buildChannelLegend`, `applyViewVisibility`.
-  - **Interaction** — `bindHover` (hover readouts, wheel zoom, drag pan, heatmap navigation), file handling, apply/reset/toggle handlers, resize.
+  - **Interaction** — `bindHover` (hover readouts, measurement arrows, wheel zoom, drag pan, heatmap navigation), file handling, apply/reset/toggle handlers, resize.
 
 ## Current state
 
 - Fully functional single-file tool.
-- Initial commit pending (this is the first documentation pass — README.md and PROJECT_INSTRUCTIONS.md were placeholders and have now been written).
+- Initial commit done. Latest work added the **Show All Timestamps** trace layer (`showTs`) with per-sample vertical lines and inter-sample measurement arrows in the hover popup, including dual arrows when anomalies are also shown.
 
 ## Conventions / preferences
 

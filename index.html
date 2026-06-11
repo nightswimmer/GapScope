@@ -182,6 +182,7 @@
   .readout .hi{color:var(--drop)}
   .readout .ok{color:var(--phosphor)}
   .readout .tight{color:var(--tight)}
+  .readout .ts{color:#9cc2ee}
 
   /* table */
   table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
@@ -297,6 +298,7 @@ time
         <div class="view-toggles">
           <label class="chk"><input type="checkbox" id="show-raw"> Show Raw Data</label>
           <label class="chk"><input type="checkbox" id="show-anom" checked> Show Anomalies</label>
+          <label class="chk"><input type="checkbox" id="show-ts"> Show All Timestamps</label>
         </div>
         <div class="zoom-ctl">
           <span class="hint">scroll to zoom · drag to pan · double-click to reset</span>
@@ -383,7 +385,7 @@ time
   var channelNames = [];     // header-derived names, length = channelCount
   var channelCount = 0;
   var chMin = [], chMax = []; // per-channel global value range
-  var showRaw = false, showAnom = true;  // view-layer toggles
+  var showRaw = false, showAnom = true, showTs = false;  // view-layer toggles
   var malformed = 0, outOfOrder = 0, duplicates = 0;
   var intervalNs = 1e6;      // nominal Δt
   var detectedNs = 1e6;
@@ -651,26 +653,24 @@ time
   function clearOverlay(){
     var o = overlaySetup(); if(o) o.ctx.clearRect(0,0,o.w,o.h);
   }
-  function drawMeasureArrow(mouseY, left, right){
-    var o = overlaySetup(); if(!o || !traceData) return;
-    var ctx = o.ctx, w = o.w, h = o.h;
-    ctx.clearRect(0,0,w,h);
-    var t0 = traceData.col.t0, span = traceData.col.span || 1;
+  // one double-headed measurement arrow between two points, in colour `rgb`
+  // ("r,g,b"), with dashed vertical guides and a Δt label, at vertical y
+  function drawOneArrow(ctx, w, h, t0, span, y, left, right, rgb){
+    var color = "rgb("+rgb+")";
     var xL = ((left.t - t0)/span)*w;
     var xR = ((right.t - t0)/span)*w;
-    var y = mouseY; if(y < 18) y = 18; if(y > h-14) y = h-14;
-    var accent = "#4aa8ff";
+    if(y < 18) y = 18; if(y > h-14) y = h-14;
 
-    // dashed vertical guides locating each event
     ctx.save();
-    ctx.strokeStyle = "rgba(74,168,255,.4)"; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    // dashed vertical guides locating each endpoint
+    ctx.strokeStyle = "rgba("+rgb+",.4)"; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
     ctx.beginPath(); ctx.moveTo(xL, 6); ctx.lineTo(xL, h-6); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(xR, 6); ctx.lineTo(xR, h-6); ctx.stroke();
     ctx.setLineDash([]);
 
-    // horizontal double-headed arrow across the cursor, terminating on both events
-    ctx.strokeStyle = accent; ctx.fillStyle = accent; ctx.lineWidth = 1.5;
-    ctx.shadowColor = accent; ctx.shadowBlur = 4;
+    // horizontal double-headed arrow terminating on both endpoints
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.5;
+    ctx.shadowColor = color; ctx.shadowBlur = 4;
     ctx.beginPath(); ctx.moveTo(xL, y); ctx.lineTo(xR, y); ctx.stroke();
     var ah = 7;
     ctx.beginPath(); ctx.moveTo(xL, y); ctx.lineTo(xL+ah, y-4.5); ctx.lineTo(xL+ah, y+4.5); ctx.closePath(); ctx.fill();
@@ -684,12 +684,25 @@ time
     var vxL = Math.max(0, Math.min(w, xL)), vxR = Math.max(0, Math.min(w, xR));
     var mx = (vxL + vxR)/2; mx = Math.max(tw/2+8, Math.min(w-tw/2-8, mx));
     var ly = y - 14; if(ly < 11) ly = y + 18;
-    ctx.fillStyle = "rgba(6,10,16,.88)"; ctx.strokeStyle = "rgba(74,168,255,.55)"; ctx.lineWidth = 1;
+    ctx.fillStyle = "rgba(6,10,16,.88)"; ctx.strokeStyle = "rgba("+rgb+",.55)"; ctx.lineWidth = 1;
     roundRect(ctx, mx-tw/2-6, ly-8.5, tw+12, 17, 4); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#cfe4ff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#e6eefc"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(label, mx, ly);
     ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
     ctx.restore();
+  }
+  // draw a set of measurement arrows (e.g. timestamp span + event span) on one
+  // overlay; when more than one, they're offset vertically so both stay legible
+  function drawMeasureArrows(mouseY, specs){
+    var o = overlaySetup(); if(!o || !traceData) return;
+    var ctx = o.ctx, w = o.w, h = o.h;
+    ctx.clearRect(0,0,w,h);
+    var t0 = traceData.col.t0, span = traceData.col.span || 1;
+    var n = specs.length;
+    for(var i=0;i<n;i++){
+      var y = (n === 1) ? mouseY : mouseY + (i === 0 ? -18 : 18);
+      drawOneArrow(ctx, w, h, t0, span, y, specs[i].left, specs[i].right, specs[i].rgb);
+    }
   }
 
   // per-pixel column aggregation over the time window [t0, t1]
@@ -797,6 +810,10 @@ time
       ctx.beginPath(); ctx.moveTo(gx, 8); ctx.lineTo(gx, h-10); ctx.stroke();
     }
 
+    // sample timestamps: one vertical line per occupied pixel column, drawn
+    // under the anomaly/raw layers so the brighter error marks sit on top
+    if(showTs) drawAllTimestamps(ctx, w, h, col);
+
     var rawOn = showRaw && channelCount > 0;
     var baseY = Math.round(h * 0.62);
     if(rawOn){
@@ -804,10 +821,10 @@ time
       if(showAnom) overlayAnomBands(ctx, w, h, t0, t1, span, col);
     } else if(showAnom){
       drawAnomBipolar(ctx, w, h, t0, t1, span, col, threshold, baseY);
-    } else {
+    } else if(!showTs){
       ctx.font = '12px ui-monospace,monospace';
       ctx.fillStyle = "rgba(116,132,154,.7)"; ctx.textAlign = "center";
-      var msg = (showRaw && channelCount===0) ? "No data columns in this file" : "Enable “Show Raw Data” or “Show Anomalies”";
+      var msg = (showRaw && channelCount===0) ? "No data columns in this file" : "Enable “Show Raw Data”, “Show Anomalies” or “Show All Timestamps”";
       ctx.fillText(msg, w/2, h/2); ctx.textAlign = "start";
     }
 
@@ -933,6 +950,24 @@ time
     }
   }
 
+  // every sample timestamp as a vertical line, drawn alongside the error marks
+  // in a distinct colour. One line per pixel column that holds any sample, so
+  // dense regions collapse to a single line per column (same as the anomaly
+  // spikes) and individual timestamps separate out as you zoom in.
+  function drawAllTimestamps(ctx, w, h, col){
+    var top = 10, bot = h - 12;
+    ctx.save();
+    ctx.strokeStyle = "rgba(122,170,224,.5)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(var c=0;c<col.cols;c++){
+      if(col.present[c] > 0){
+        ctx.moveTo(c+0.5, top); ctx.lineTo(c+0.5, bot);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ---------- draw: heatmap ----------
   var heatData = null;
   function drawHeat(){
@@ -980,6 +1015,7 @@ time
     if(channelCount === 0) showRaw = false;
     rawCb.checked = showRaw;
     $("show-anom").checked = showAnom;
+    $("show-ts").checked = showTs;
     buildChannelLegend();
     $("th-time-drop").textContent = "Start time " + timeColHeader();
     $("th-time-tight").textContent = "Time " + timeColHeader();
@@ -1152,7 +1188,34 @@ time
         }
       }
 
-      var drewArrow = false;
+      var arrows = [];   // measurement arrows to draw on the overlay
+
+      // Δt between the timestamps bracketing the cursor (+ draw the arrow)
+      if(showTs){
+        var lb = lowerBound(off), li = lb-1, ri = lb;
+        if(li >= 0 && ri < offsets.length){
+          var lt = offsets[li], rt = offsets[ri];
+          html += '<br><span class="lab">samples</span> <span class="ts">#'+fmtInt(li+1)+'</span> '+
+                  '<span class="lab">⟷</span> <span class="ts">#'+fmtInt(ri+1)+'</span>'+
+                  ' &nbsp;<b>Δt '+fmtGap(rt-lt)+'</b>'+
+                  '<br><span class="lab">&nbsp;&nbsp;← '+fmtGap(off-lt)+' · '+fmtGap(rt-off)+' →</span>';
+          arrows.push({ left:{t:lt}, right:{t:rt}, rgb:"122,170,224" });
+          // inside a dropout: name the estimated missing timestamp under the cursor
+          var gg = rt - lt;
+          if(gg > traceData.threshold){
+            var totMiss = Math.max(1, Math.round(gg/intervalNs)-1);
+            var kk = Math.max(1, Math.min(totMiss, Math.round((off - lt)/intervalNs)));
+            var et = lt + kk*intervalNs;
+            html += '<br><span class="hi">est. missing '+kk+'/'+fmtInt(totMiss)+'</span> '+clockInline(et)+
+                    ' <span class="lab">(+'+fmtGap(kk*intervalNs)+' from last good)</span>';
+          }
+        } else if(ri < offsets.length){
+          html += '<br><span class="lab">→ next sample</span> '+fmtGap(offsets[ri]-off);
+        } else if(li >= 0){
+          html += '<br><span class="lab">← prev sample</span> '+fmtGap(off-offsets[li]);
+        }
+      }
+
       if(showAnom){
         var bestGap = 0, tightGap = Infinity;
         for(var dd=-3; dd<=3; dd++){
@@ -1184,7 +1247,7 @@ time
             html += '<br><span class="lab">events</span> '+tag(left)+' <span class="lab">⟷</span> '+tag(right)+
                     ' &nbsp;<b>Δt '+fmtGap(dt)+'</b>'+
                     '<br><span class="lab">&nbsp;&nbsp;← '+fmtGap(off-left.t)+' · '+fmtGap(right.t-off)+' →</span>';
-            if(typeof mouseY === "number"){ drawMeasureArrow(mouseY, left, right); drewArrow = true; }
+            arrows.push({ left:left, right:right, rgb:"74,168,255" });
           } else if(right){
             html += '<br><span class="lab">→ next event</span> '+fmtGap(right.t-off);
           } else if(left){
@@ -1192,7 +1255,8 @@ time
           }
         }
       }
-      if(!drewArrow) clearOverlay();
+      if(arrows.length && typeof mouseY === "number") drawMeasureArrows(mouseY, arrows);
+      else clearOverlay();
       traceRO.innerHTML = html;
       traceRO.style.left = x + "px";
       traceRO.style.top = (traceData.topY+10) + "px";
@@ -1412,6 +1476,7 @@ time
   // view-layer toggles
   $("show-raw").addEventListener("change", function(){ showRaw = this.checked; refreshView(); });
   $("show-anom").addEventListener("change", function(){ showAnom = this.checked; refreshView(); });
+  $("show-ts").addEventListener("change", function(){ showTs = this.checked; refreshView(); });
 
   // redraw on resize
   var rt;
