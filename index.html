@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GAPSCOPE — capture integrity</title>
+<style>
+  :root{
+    --bg:#080b11;
+    --bg-grid:#0e141d;
+    --panel:#111824;
+    --panel-2:#0d131c;
+    --line:#1c2531;
+    --line-bright:#26344a;
+    --text:#cdd8e6;
+    --text-dim:#74849a;
+    --text-faint:#46566b;
+    --phosphor:#34e0c4;
+    --phosphor-dim:rgba(52,224,196,.14);
+    --warn:#f5b13d;
+    --orange:#ff8a3d;
+    --drop:#ff5470;
+    --drop-hot:#ff2d55;
+    --tight:#9d8cff;
+    --tight-dim:rgba(157,140,255,.14);
+    --accent:#4aa8ff;
+    --mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #0c1320 0%, var(--bg) 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 80px}
+
+  /* nameplate */
+  .head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+  .brand{display:flex;align-items:center;gap:14px}
+  .brand .mark{
+    width:38px;height:38px;border:1px solid var(--line-bright);border-radius:7px;
+    display:grid;place-items:center;background:var(--panel-2);position:relative;overflow:hidden;
+  }
+  .brand .mark svg{display:block}
+  .brand h1{
+    font-family:var(--mono);font-size:20px;font-weight:600;letter-spacing:.18em;
+    margin:0;color:var(--text)
+  }
+  .brand .sub{font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--text-faint);text-transform:uppercase;margin-top:2px}
+
+  /* controls */
+  .controls{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .ctl{display:flex;flex-direction:column;gap:5px}
+  .ctl label{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-faint)}
+  .ctl .row{display:flex;align-items:center;gap:6px}
+  .ctl input{
+    width:104px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    font-family:var(--mono);font-size:14px;padding:8px 10px;border-radius:6px;outline:none;
+  }
+  .ctl input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,168,255,.18)}
+  .ctl .unit{font-family:var(--mono);font-size:12px;color:var(--text-dim)}
+  button.apply{
+    background:var(--phosphor-dim);border:1px solid rgba(52,224,196,.4);color:var(--phosphor);
+    font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+    padding:9px 16px;border-radius:6px;cursor:pointer;height:37px;transition:background .15s,border-color .15s;
+  }
+  button.apply:hover{background:rgba(52,224,196,.22);border-color:var(--phosphor)}
+  button.apply:disabled{opacity:.35;cursor:not-allowed}
+
+  /* drop zone */
+  .drop{
+    border:1.5px dashed var(--line-bright);border-radius:12px;background:var(--panel-2);
+    padding:48px 24px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;
+    position:relative;
+  }
+  .drop:hover{border-color:var(--accent)}
+  .drop.over{border-color:var(--phosphor);background:rgba(52,224,196,.05)}
+  .drop .big{font-family:var(--mono);font-size:18px;letter-spacing:.04em;margin:0 0 6px}
+  .drop .small{color:var(--text-dim);font-size:13px;margin:0}
+  .drop .fmt{
+    margin-top:18px;font-family:var(--mono);font-size:11px;color:var(--text-faint);
+    background:var(--bg-grid);border:1px solid var(--line);border-radius:6px;padding:8px 12px;display:inline-block;
+    white-space:pre;text-align:left;overflow-x:auto;max-width:100%;
+  }
+
+  /* loaded bar */
+  .loaded{
+    display:none;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:12px 16px;
+    font-family:var(--mono);font-size:13px;
+  }
+  .loaded .file{color:var(--text);display:flex;align-items:center;gap:10px;min-width:0}
+  .loaded .file .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .loaded .file .dot{width:7px;height:7px;border-radius:50%;background:var(--phosphor);flex:none;box-shadow:0 0 8px var(--phosphor)}
+  .loaded .meta{color:var(--text-dim);font-size:12px}
+  .loaded a.reload{color:var(--accent);cursor:pointer;font-size:12px;text-decoration:none;border-bottom:1px solid transparent}
+  .loaded a.reload:hover{border-bottom-color:var(--accent)}
+
+  /* progress */
+  .progress{display:none;margin-top:18px}
+  .progress .bar{height:4px;background:var(--bg-grid);border-radius:3px;overflow:hidden}
+  .progress .fill{height:100%;width:0;background:var(--phosphor);box-shadow:0 0 10px var(--phosphor);transition:width .08s linear}
+  .progress .txt{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:8px;letter-spacing:.06em}
+
+  /* error / note */
+  .note{display:none;margin-top:16px;border:1px solid rgba(255,84,112,.4);background:rgba(255,84,112,.07);
+    color:#ffd2da;border-radius:8px;padding:12px 16px;font-size:13px;font-family:var(--mono)}
+
+  /* results */
+  .results{display:none;margin-top:26px;animation:rise .4s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--text-faint);margin:0 0 12px}
+
+  /* stat grid */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .stat{background:var(--panel);padding:16px 16px 15px}
+  .stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint);margin-bottom:8px}
+  .stat .v{font-family:var(--mono);font-size:21px;line-height:1;color:var(--text);font-weight:500}
+  .stat .v.bad{color:var(--drop)}
+  .stat .v.good{color:var(--phosphor)}
+  .stat .v.tight{color:var(--tight)}
+  .stat .u{font-size:12px;color:var(--text-dim);margin-left:3px}
+
+  .verdict{
+    margin:18px 0 26px;border-radius:10px;padding:16px 18px;display:flex;align-items:center;gap:14px;
+    font-family:var(--mono);border:1px solid var(--line);background:var(--panel);
+  }
+  .verdict .badge{width:11px;height:11px;border-radius:50%;flex:none}
+  .verdict.clean{border-color:rgba(52,224,196,.4);background:rgba(52,224,196,.06)}
+  .verdict.clean .badge{background:var(--phosphor);box-shadow:0 0 10px var(--phosphor)}
+  .verdict.loss{border-color:rgba(255,84,112,.4);background:rgba(255,84,112,.06)}
+  .verdict.loss .badge{background:var(--drop);box-shadow:0 0 10px var(--drop)}
+  .verdict .t{font-size:15px;color:var(--text)}
+  .verdict .d{font-size:12px;color:var(--text-dim);margin-top:2px}
+
+  .block{margin-top:28px}
+  .block-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  .zoom-ctl{display:flex;align-items:center;gap:12px;font-family:var(--mono)}
+  .zoom-ctl .hint{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint)}
+  .zoom-ctl .zlevel{font-size:12px;color:var(--phosphor);min-width:42px;text-align:right}
+  .zoom-ctl .zreset{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text-dim);
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    padding:5px 11px;border-radius:5px;cursor:pointer;transition:border-color .15s,color .15s;
+  }
+  .zoom-ctl .zreset:hover{border-color:var(--accent);color:var(--text)}
+  .view-toggles{display:flex;align-items:center;gap:16px;font-family:var(--mono)}
+  .chk{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-dim);cursor:pointer;user-select:none;letter-spacing:.04em}
+  .chk:hover{color:var(--text)}
+  .chk input{appearance:none;-webkit-appearance:none;width:15px;height:15px;border:1px solid var(--line-bright);
+    border-radius:4px;background:var(--panel-2);cursor:pointer;position:relative;flex:none;transition:border-color .15s,background .15s}
+  .chk input:checked{background:var(--accent);border-color:var(--accent)}
+  .chk input:checked::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;
+    border:solid #07111f;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .chk input:disabled{opacity:.35;cursor:not-allowed}
+  .chk input:disabled + span,.chk:has(input:disabled){opacity:.45;cursor:not-allowed}
+  #heat{cursor:ew-resize}
+  .block .legend{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+  .block .legend .item{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--text-dim)}
+  .block .legend .sw{width:12px;height:12px;border-radius:3px}
+
+  .canvas-wrap{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);padding:14px 14px 8px}
+  canvas{display:block;width:100%;cursor:crosshair}
+  #trace-ov{position:absolute;pointer-events:none;cursor:default}
+  .axis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text-faint);margin-top:4px;letter-spacing:.04em}
+  .readout{
+    position:absolute;pointer-events:none;background:#060a10;border:1px solid var(--line-bright);
+    border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text);
+    white-space:nowrap;opacity:0;transform:translate(-50%,-118%);transition:opacity .08s;z-index:5;
+    box-shadow:0 6px 22px rgba(0,0,0,.5)
+  }
+  .readout .lab{color:var(--text-faint)}
+  .readout .hi{color:var(--drop)}
+  .readout .ok{color:var(--phosphor)}
+  .readout .tight{color:var(--tight)}
+
+  /* table */
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+  thead th{text-align:left;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-faint);
+    font-weight:500;padding:10px 14px;border-bottom:1px solid var(--line)}
+  thead th.r,tbody td.r{text-align:right}
+  tbody td{padding:10px 14px;border-bottom:1px solid var(--bg-grid);color:var(--text-dim)}
+  tbody tr:hover{background:var(--panel)}
+  tbody td.idx{color:var(--text-faint)}
+  tbody td.time{color:var(--text)}
+  tbody td.miss{color:var(--drop)}
+  .tbl-wrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel-2)}
+  .empty-rows{padding:22px;text-align:center;color:var(--text-dim);font-family:var(--mono);font-size:13px}
+
+  footer{margin-top:40px;font-family:var(--mono);font-size:11px;color:var(--text-faint);letter-spacing:.06em;text-align:center}
+
+  @media (max-width:760px){
+    .head{align-items:flex-start}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .results{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div class="brand">
+      <div class="mark">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+          <path d="M1 12 H5 L7 12 L8 4 L10 18 L12 8 L13 12 H15" stroke="#34e0c4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M16 12 H21" stroke="#34e0c4" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.5 2.2" opacity="0.5"/>
+          <circle cx="17.5" cy="6" r="1.6" fill="#ff5470"/>
+        </svg>
+      </div>
+      <div>
+        <h1>GAPSCOPE</h1>
+        <div class="sub">capture integrity inspector</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="ctl">
+        <label for="interval">Nominal Δt</label>
+        <div class="row">
+          <input id="interval" type="number" step="0.0001" min="0" placeholder="auto">
+          <span class="unit">ms</span>
+        </div>
+      </div>
+      <div class="ctl">
+        <label for="tol">Gap threshold</label>
+        <div class="row">
+          <input id="tol" type="number" step="0.1" min="1" value="1.5">
+          <span class="unit">× Δt</span>
+        </div>
+      </div>
+      <div class="ctl">
+        <label for="close">Too-close under</label>
+        <div class="row">
+          <input id="close" type="number" step="1" min="0" value="900">
+          <span class="unit">µs</span>
+        </div>
+      </div>
+      <button class="apply" id="apply" disabled>Apply</button>
+    </div>
+  </div>
+
+  <!-- drop zone -->
+  <div class="drop" id="drop">
+    <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" style="display:none">
+    <p class="big">Drop your capture here</p>
+    <p class="small">or click to browse — CSV stays on your machine, nothing is uploaded</p>
+    <div class="fmt">time,analog_input0,encoder,analog_input1
+2026-06-09 22:20:33.475999832+00:00,7,0,7
+2026-06-09 22:20:33.476992130+00:00,7,0,8
+
+# …or a plain seconds column:
+time
+2261.581536
+2261.582496</div>
+  </div>
+
+  <div class="loaded" id="loaded">
+    <div class="file"><span class="dot"></span><span class="name" id="fname"></span></div>
+    <div class="meta" id="fmeta"></div>
+    <a class="reload" id="reload">Load another capture</a>
+  </div>
+
+  <div class="progress" id="progress">
+    <div class="bar"><div class="fill" id="pfill"></div></div>
+    <div class="txt" id="ptxt">Reading…</div>
+  </div>
+
+  <div class="note" id="note"></div>
+
+  <!-- results -->
+  <div class="results" id="results">
+
+    <div class="verdict" id="verdict">
+      <span class="badge"></span>
+      <div>
+        <div class="t" id="verdict-t"></div>
+        <div class="d" id="verdict-d"></div>
+      </div>
+    </div>
+
+    <div class="stats" id="statgrid"></div>
+
+    <div class="block">
+      <div class="block-head">
+        <p class="eyebrow" style="margin:0">Capture trace</p>
+        <div class="view-toggles">
+          <label class="chk"><input type="checkbox" id="show-raw"> Show Raw Data</label>
+          <label class="chk"><input type="checkbox" id="show-anom" checked> Show Anomalies</label>
+        </div>
+        <div class="zoom-ctl">
+          <span class="hint">scroll to zoom · drag to pan · double-click to reset</span>
+          <span class="zlevel" id="zlevel">1.0×</span>
+          <button class="zreset" id="zreset">Reset</button>
+        </div>
+      </div>
+      <div class="legend" id="anom-legend">
+        <div class="item"><span class="sw" style="background:var(--phosphor)"></span>continuous</div>
+        <div class="item"><span class="sw" style="background:var(--warn)"></span>1 missing</div>
+        <div class="item"><span class="sw" style="background:var(--orange)"></span>2–9</div>
+        <div class="item"><span class="sw" style="background:var(--drop)"></span>10–99</div>
+        <div class="item"><span class="sw" style="background:var(--drop-hot)"></span>100+</div>
+        <div class="item" style="margin-left:auto"><span class="sw" style="background:var(--tight)"></span>too close ▾</div>
+      </div>
+      <div class="legend" id="chan-legend" style="display:none"></div>
+      <div class="canvas-wrap" id="trace-wrap">
+        <canvas id="trace"></canvas>
+        <canvas id="trace-ov"></canvas>
+        <div class="readout" id="trace-ro"></div>
+      </div>
+      <div class="axis"><span id="t-start">0 s</span><span id="t-mid"></span><span id="t-end"></span></div>
+    </div>
+
+    <div class="block" id="heat-block">
+      <p class="eyebrow">Coverage heatmap — full capture · click or drag to navigate the trace above</p>
+      <div class="legend">
+        <div class="item"><span class="sw" style="background:var(--phosphor)"></span>complete</div>
+        <div class="item"><span class="sw" style="background:hsl(55 78% 55%)"></span>partial</div>
+        <div class="item"><span class="sw" style="background:var(--drop)"></span>sparse</div>
+      </div>
+      <div class="canvas-wrap" id="heat-wrap" style="padding-bottom:14px">
+        <canvas id="heat"></canvas>
+        <div class="readout" id="heat-ro"></div>
+      </div>
+    </div>
+
+    <div class="block" id="drop-block">
+      <p class="eyebrow">Largest dropouts</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:50px">#</th>
+            <th id="th-time-drop">Start time (UTC)</th>
+            <th class="r">Elapsed</th>
+            <th class="r">Gap</th>
+            <th class="r">Missing</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="block" id="tight-block" style="display:none">
+      <p class="eyebrow">Tightest spacings — arrivals under the too-close threshold</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:50px">#</th>
+            <th id="th-time-tight">Time (UTC)</th>
+            <th class="r">Elapsed</th>
+            <th class="r">Spacing</th>
+            <th class="r">Under Δt by</th>
+          </tr></thead>
+          <tbody id="tbody-tight"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>GAPSCOPE · runs entirely in your browser · save this file to reuse offline</footer>
+</div>
+
+<script>
+"use strict";
+(function(){
+  // ---------- state ----------
+  var firstNs = 0n;          // BigInt epoch ns of first sample
+  var isAbsolute = true;     // true: epoch/wall-clock; false: relative elapsed seconds
+  var offsets = [];          // Number ns from first sample
+  var gaps = [];             // Number ns, gaps[i] = offsets[i+1]-offsets[i]
+  var channels = [];         // channels[k] = array of Numbers (raw data column values)
+  var channelNames = [];     // header-derived names, length = channelCount
+  var channelCount = 0;
+  var chMin = [], chMax = []; // per-channel global value range
+  var showRaw = false, showAnom = true;  // view-layer toggles
+  var malformed = 0, outOfOrder = 0, duplicates = 0;
+  var intervalNs = 1e6;      // nominal Δt
+  var detectedNs = 1e6;
+  var tolerance = 1.5;
+  var closeNs = 9e5;         // too-close threshold (default 900 µs)
+  var stats = null;
+  var gapEvents = [];        // {start, end, gapNs, missing}
+  var tightEvents = [];      // {start, gapNs} for spacings below closeNs
+  var eventList = [];        // merged anomalies sorted by time: {t, kind, gapNs, missing}
+  var eventTimes = [];       // parallel array of t for binary search
+
+  // ---------- view window (zoom) ----------
+  var viewStart = 0, viewEnd = 0;   // visible time window, ns offsets
+  var minWindowNs = 1e6;            // tightest zoom; set after analyze
+  var drawPending = false;
+
+  // ---------- elements ----------
+  var $ = function(id){ return document.getElementById(id); };
+  var drop = $("drop"), fileInput = $("file"), loaded = $("loaded"),
+      results = $("results"), note = $("note"),
+      progress = $("progress"), pfill = $("pfill"), ptxt = $("ptxt"),
+      intervalIn = $("interval"), tolIn = $("tol"), closeIn = $("close"), applyBtn = $("apply");
+
+  // ---------- parsing ----------
+  var TS_RE = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?\s*(Z|[+-]\d{2}:?\d{2})?$/;
+  var NUM_RE = /^([+-]?)(\d+)(?:\.(\d+))?$/;   // plain elapsed/epoch seconds, e.g. 2261.581536
+
+  function parseTsNs(s){
+    var m = TS_RE.exec(s);
+    if(m){
+      var ms = Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+      if(isNaN(ms)) return null;
+      var tz = m[8];
+      if(tz && tz !== "Z"){
+        var t = /([+-])(\d{2}):?(\d{2})/.exec(tz);
+        var off = (t[1]==="-"?-1:1)*(+t[2]*60 + (+t[3]));
+        ms -= off*60000;
+      }
+      var ns = BigInt(ms) * 1000000n;
+      if(m[7]) ns += BigInt(parseInt((m[7]+"000000000").slice(0,9), 10));
+      return ns;
+    }
+    // plain seconds value (integer or decimal) — parsed exactly to ns, no float math
+    var nm = NUM_RE.exec(s);
+    if(nm){
+      var sign = nm[1] === "-" ? -1n : 1n;
+      var sec = BigInt(nm[2]);
+      var frac = nm[3] ? BigInt((nm[3] + "000000000").slice(0, 9)) : 0n;
+      return sign * (sec * 1000000000n + frac);
+    }
+    return null;
+  }
+
+  function resetData(){
+    firstNs = 0n; offsets = []; gaps = [];
+    channels = []; channelNames = []; channelCount = 0; chMin = []; chMax = [];
+    malformed = 0; outOfOrder = 0; duplicates = 0;
+    viewStart = 0; viewEnd = 0;   // force full-extent view for the new capture
+  }
+
+  function processLines(lines){
+    return new Promise(function(resolve){
+      var CHUNK = 40000, i = 0, n = lines.length, started = false, prev = null;
+      var headerFields = null;
+      function step(){
+        var end = Math.min(i + CHUNK, n);
+        for(; i < end; i++){
+          var raw = lines[i];
+          if(!raw) continue;
+          var parts = raw.split(",");
+          var field = parts[0].trim();
+          if(!field) continue;
+          var ts = parseTsNs(field);
+          if(ts === null){
+            if(!started){ if(!headerFields) headerFields = parts; continue; } // header / preamble
+            malformed++; continue;
+          }
+          if(!started){
+            started = true; firstNs = ts;
+            channelCount = Math.max(0, parts.length - 1);
+            for(var ci=0; ci<channelCount; ci++){
+              channels[ci] = [];
+              chMin[ci] = Infinity; chMax[ci] = -Infinity;
+              var nm = (headerFields && headerFields[ci+1] != null) ? headerFields[ci+1].trim() : "";
+              channelNames[ci] = nm || ("ch"+ci);
+            }
+          }
+          var off = Number(ts - firstNs);
+          if(prev !== null){
+            var g = off - prev;
+            if(g < 0){ outOfOrder++; }
+            else if(g === 0){ duplicates++; }
+            gaps.push(g);
+          }
+          offsets.push(off);
+          for(var k=0; k<channelCount; k++){
+            var v = k+1 < parts.length ? parseFloat(parts[k+1]) : NaN;
+            channels[k].push(v);
+            if(v === v){ if(v < chMin[k]) chMin[k] = v; if(v > chMax[k]) chMax[k] = v; } // v===v excludes NaN
+          }
+          prev = off;
+        }
+        var frac = n ? i/n : 1;
+        pfill.style.width = (frac*100).toFixed(1) + "%";
+        ptxt.textContent = "Scanning samples… " + offsets.length.toLocaleString();
+        if(i < n){ setTimeout(step, 0); }
+        else resolve();
+      }
+      step();
+    });
+  }
+
+  function median(arr){
+    if(!arr.length) return 1e6;
+    var pos = arr.filter(function(g){ return g > 0; });
+    if(!pos.length) return 1e6;
+    pos.sort(function(a,b){ return a-b; });
+    var mid = pos.length >> 1;
+    return pos.length % 2 ? pos[mid] : (pos[mid-1]+pos[mid])/2;
+  }
+
+  // ---------- analysis ----------
+  function analyze(){
+    var n = offsets.length;
+    var durationNs = n ? offsets[n-1] : 0;
+    var expected = intervalNs > 0 ? Math.round(durationNs/intervalNs) + 1 : n;
+    var dropped = Math.max(0, expected - n);
+    var threshold = intervalNs * tolerance;
+
+    gapEvents = [];
+    tightEvents = [];
+    var worst = 0, missSum = 0, tightest = Infinity;
+    for(var i=0;i<gaps.length;i++){
+      var g = gaps[i];
+      if(g > worst) worst = g;
+      if(g > threshold){
+        var miss = Math.max(1, Math.round(g/intervalNs) - 1);
+        missSum += miss;
+        gapEvents.push({ start: offsets[i], end: offsets[i+1], gapNs: g, missing: miss });
+      }
+      if(g >= 0 && g < closeNs){
+        tightEvents.push({ start: offsets[i], gapNs: g });
+        if(g < tightest) tightest = g;
+      }
+    }
+    if(!isFinite(tightest)) tightest = 0;
+
+    // merged, time-sorted anomaly list for inter-event measurement on hover
+    eventList = [];
+    for(var a=0;a<gapEvents.length;a++) eventList.push({ t: gapEvents[a].start, kind:"drop", gapNs: gapEvents[a].gapNs, missing: gapEvents[a].missing });
+    for(var b=0;b<tightEvents.length;b++) eventList.push({ t: tightEvents[b].start, kind:"tight", gapNs: tightEvents[b].gapNs });
+    eventList.sort(function(p,q){ return p.t - q.t; });
+    eventTimes = eventList.map(function(e){ return e.t; });
+
+    var rate = durationNs > 0 ? n / (durationNs/1e9) : 0;
+    stats = {
+      n: n, durationNs: durationNs, expected: expected, dropped: dropped,
+      events: gapEvents.length, worst: worst, rate: rate, missSum: missSum,
+      tight: tightEvents.length, tightest: tightest
+    };
+  }
+
+  // ---------- formatting ----------
+  function fmtInt(x){ return Math.round(x).toLocaleString(); }
+  function fmtGap(ns){
+    if(ns < 1000) return ns.toFixed(0) + " ns";
+    if(ns < 1e6)  return (ns/1e3).toFixed(2) + " µs";
+    if(ns < 1e9)  return (ns/1e6).toFixed(3) + " ms";
+    return (ns/1e9).toFixed(3) + " s";
+  }
+  function fmtDuration(ns){
+    var s = ns/1e9;
+    if(s < 1) return (ns/1e6).toFixed(1) + " ms";
+    if(s < 60) return s.toFixed(2) + " s";
+    var m = Math.floor(s/60), r = s - m*60;
+    return m + "m " + r.toFixed(1) + "s";
+  }
+  function pad(x,n){ return String(x).padStart(n,"0"); }
+  function absClock(offNs){
+    var abs = firstNs + BigInt(Math.round(offNs));
+    var secs = abs / 1000000000n;
+    var frac = Number(abs % 1000000000n);
+    var d = new Date(Number(secs)*1000);
+    return pad(d.getUTCHours(),2)+":"+pad(d.getUTCMinutes(),2)+":"+pad(d.getUTCSeconds(),2)+"."+pad(Math.floor(frac/1000),6);
+  }
+  function absDate(offNs){
+    var abs = firstNs + BigInt(Math.round(offNs));
+    var d = new Date(Number(abs/1000000n));
+    return d.getUTCFullYear()+"-"+pad(d.getUTCMonth()+1,2)+"-"+pad(d.getUTCDate(),2);
+  }
+  // absolute seconds value as an exact decimal string (relative-time mode)
+  function absSecNum(offNs, dec){
+    var abs = firstNs + BigInt(Math.round(offNs));
+    var neg = abs < 0n; if(neg) abs = -abs;
+    var s = abs / 1000000000n, f = abs % 1000000000n;
+    var fs = String(f).padStart(9,"0").slice(0, dec||6);
+    return (neg?"-":"") + s.toString() + "." + fs;
+  }
+  // bare cell text for the time column, mode-aware
+  function clockCell(offNs){ return isAbsolute ? absClock(offNs) : absSecNum(offNs, 6); }
+  // inline label with units/suffix for axis + hover, mode-aware
+  function clockInline(offNs){ return isAbsolute ? absClock(offNs)+" UTC" : "t="+absSecNum(offNs,6)+" s"; }
+  function timeColHeader(){ return isAbsolute ? "(UTC)" : "(s)"; }
+
+  // ---------- colors ----------
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function coverageColor(r){
+    if(r >= 0.9995) return "rgb(52,224,196)";
+    r = Math.max(0, Math.min(1, r));
+    var h = lerp(352, 168, r), s = lerp(86, 68, r), l = lerp(58, 53, r);
+    return "hsl("+h+" "+s+"% "+l+"%)";
+  }
+  function spikeColor(miss){
+    if(miss <= 1) return "#f5b13d";
+    if(miss < 10) return "#ff8a3d";
+    if(miss < 100) return "#ff5470";
+    return "#ff2d55";
+  }
+  // distinct line colours for raw data channels (avoid red/violet used by anomalies)
+  var CHAN_COLORS = ["#5aa9ff","#5fd97a","#e8c84d","#4dd0e1","#ff9f6b","#a0d468","#7ec8ff","#ffd166"];
+  function chanColor(k){ return CHAN_COLORS[k % CHAN_COLORS.length]; }
+
+  // ---------- canvas helpers ----------
+  function setup(canvas, cssH){
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.clientWidth || canvas.parentNode.clientWidth || canvas.offsetWidth;
+    if(!w || w < 2){ w = 800; }  // fallback if measured before layout
+    canvas.style.height = cssH + "px";
+    canvas.width = Math.round(w*dpr);
+    canvas.height = Math.round(cssH*dpr);
+    var ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    return { ctx: ctx, w: w, h: cssH };
+  }
+
+  // first index i with offsets[i] >= x  (offsets are time-ascending)
+  function lowerBound(x){
+    var lo = 0, hi = offsets.length;
+    while(lo < hi){ var mid = (lo+hi)>>1; if(offsets[mid] < x) lo = mid+1; else hi = mid; }
+    return lo;
+  }
+
+  // ---------- measurement overlay (hover arrow between bracketing events) ----------
+  function roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+  function overlaySetup(){
+    var cv = $("trace-ov"), tr = $("trace"); if(!cv || !tr) return null;
+    var dpr = window.devicePixelRatio || 1;
+    var w = tr.clientWidth, h = tr.clientHeight;   // match the trace canvas exactly
+    if(!w || !h) return null;
+    // <canvas> is a replaced element and won't stretch via CSS inset, so place it explicitly
+    cv.style.left = tr.offsetLeft + "px";
+    cv.style.top  = tr.offsetTop + "px";
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    cv.width = Math.round(w*dpr);
+    cv.height = Math.round(h*dpr);
+    var ctx = cv.getContext("2d");
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    return { ctx: ctx, w: w, h: h };
+  }
+  function clearOverlay(){
+    var o = overlaySetup(); if(o) o.ctx.clearRect(0,0,o.w,o.h);
+  }
+  function drawMeasureArrow(mouseY, left, right){
+    var o = overlaySetup(); if(!o || !traceData) return;
+    var ctx = o.ctx, w = o.w, h = o.h;
+    ctx.clearRect(0,0,w,h);
+    var t0 = traceData.col.t0, span = traceData.col.span || 1;
+    var xL = ((left.t - t0)/span)*w;
+    var xR = ((right.t - t0)/span)*w;
+    var y = mouseY; if(y < 18) y = 18; if(y > h-14) y = h-14;
+    var accent = "#4aa8ff";
+
+    // dashed vertical guides locating each event
+    ctx.save();
+    ctx.strokeStyle = "rgba(74,168,255,.4)"; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xL, 6); ctx.lineTo(xL, h-6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xR, 6); ctx.lineTo(xR, h-6); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // horizontal double-headed arrow across the cursor, terminating on both events
+    ctx.strokeStyle = accent; ctx.fillStyle = accent; ctx.lineWidth = 1.5;
+    ctx.shadowColor = accent; ctx.shadowBlur = 4;
+    ctx.beginPath(); ctx.moveTo(xL, y); ctx.lineTo(xR, y); ctx.stroke();
+    var ah = 7;
+    ctx.beginPath(); ctx.moveTo(xL, y); ctx.lineTo(xL+ah, y-4.5); ctx.lineTo(xL+ah, y+4.5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(xR, y); ctx.lineTo(xR-ah, y-4.5); ctx.lineTo(xR-ah, y+4.5); ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Δt label, centred on the visible portion of the arrow
+    var label = fmtGap(right.t - left.t);
+    ctx.font = '11px ui-monospace,monospace';
+    var tw = ctx.measureText(label).width;
+    var vxL = Math.max(0, Math.min(w, xL)), vxR = Math.max(0, Math.min(w, xR));
+    var mx = (vxL + vxR)/2; mx = Math.max(tw/2+8, Math.min(w-tw/2-8, mx));
+    var ly = y - 14; if(ly < 11) ly = y + 18;
+    ctx.fillStyle = "rgba(6,10,16,.88)"; ctx.strokeStyle = "rgba(74,168,255,.55)"; ctx.lineWidth = 1;
+    roundRect(ctx, mx-tw/2-6, ly-8.5, tw+12, 17, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#cfe4ff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, mx, ly);
+    ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+    ctx.restore();
+  }
+
+  // per-pixel column aggregation over the time window [t0, t1]
+  function columns(width, t0, t1){
+    var cols = Math.max(1, width|0);
+    var present = new Float64Array(cols);
+    var maxGap = new Float64Array(cols);
+    var minGap = new Float64Array(cols); minGap.fill(Infinity);
+    var span = (t1 - t0) || 1;
+    var iStart = lowerBound(t0);
+    var iEnd = lowerBound(t1);
+    var i, c;
+    for(i = iStart; i < iEnd; i++){
+      c = ((offsets[i]-t0)/span*cols)|0; if(c<0)c=0; if(c>=cols)c=cols-1;
+      present[c]++;
+    }
+    // gaps[k] spans offsets[k]..offsets[k+1]; include any that intersect the window
+    var gStart = Math.max(0, iStart-1);
+    for(var k = gStart; k < iEnd && k < gaps.length; k++){
+      var s = offsets[k], e = offsets[k+1];
+      if(e <= t0 || s >= t1) continue;
+      var px = s < t0 ? t0 : s;
+      c = ((px-t0)/span*cols)|0; if(c<0)c=0; if(c>=cols)c=cols-1;
+      if(gaps[k] > maxGap[c]) maxGap[c] = gaps[k];
+      if(gaps[k] >= 0 && gaps[k] < minGap[c]) minGap[c] = gaps[k];
+    }
+    return { cols: cols, present: present, maxGap: maxGap, minGap: minGap, t0: t0, t1: t1, span: span };
+  }
+
+  // per-pixel min/max for each channel over [t0,t1] (min/max decimation for the value plot)
+  function channelColumns(width, t0, t1){
+    var cols = Math.max(1, width|0);
+    var span = (t1 - t0) || 1;
+    var iStart = lowerBound(t0), iEnd = lowerBound(t1);
+    var mins = [], maxs = [];
+    for(var k=0;k<channelCount;k++){
+      mins[k] = new Float64Array(cols).fill(Infinity);
+      maxs[k] = new Float64Array(cols).fill(-Infinity);
+    }
+    for(var i=iStart;i<iEnd;i++){
+      var c = ((offsets[i]-t0)/span*cols)|0; if(c<0)c=0; if(c>=cols)c=cols-1;
+      for(var k2=0;k2<channelCount;k2++){
+        var v = channels[k2][i];
+        if(v !== v) continue;            // skip NaN
+        if(v < mins[k2][c]) mins[k2][c] = v;
+        if(v > maxs[k2][c]) maxs[k2][c] = v;
+      }
+    }
+    return { cols: cols, mins: mins, maxs: maxs };
+  }
+
+  // index of the sample nearest a given time offset
+  function nearestSample(off){
+    if(!offsets.length) return -1;
+    var lo = lowerBound(off);
+    if(lo <= 0) return 0;
+    if(lo >= offsets.length) return offsets.length-1;
+    return (off - offsets[lo-1]) <= (offsets[lo] - off) ? lo-1 : lo;
+  }
+
+  // redraw both canvases, throttled to one frame
+  function scheduleDraw(){
+    if(drawPending) return;
+    drawPending = true;
+    requestAnimationFrame(function(){ drawPending = false; drawTrace(); drawHeat(); updateZoomLevel(); });
+  }
+  function updateZoomLevel(){
+    var full = stats ? stats.durationNs : 0;
+    var span = viewEnd - viewStart;
+    var z = (full > 0 && span > 0) ? full/span : 1;
+    var el = $("zlevel");
+    if(el) el.textContent = (z < 10 ? z.toFixed(1) : Math.round(z)) + "×";
+  }
+  function clampView(){
+    var full = stats.durationNs;
+    var span = viewEnd - viewStart;
+    if(span > full){ span = full; }
+    if(span < minWindowNs){ span = Math.min(minWindowNs, full); }
+    if(viewStart < 0) viewStart = 0;
+    viewEnd = viewStart + span;
+    if(viewEnd > full){ viewEnd = full; viewStart = full - span; }
+    if(viewStart < 0) viewStart = 0;
+  }
+
+  // ---------- draw: capture trace ----------
+  var traceData = null;
+  function drawTrace(){
+    var canvas = $("trace");
+    var d = setup(canvas, 250);
+    var ctx = d.ctx, w = d.w, h = d.h;
+    ctx.clearRect(0,0,w,h);
+    clearOverlay();   // remove any stale measurement arrow on zoom/pan/redraw
+
+    var t0 = viewStart, t1 = viewEnd, span = (t1 - t0) || 1;
+    var col = columns(w, t0, t1);
+    var threshold = intervalNs * tolerance;
+    var spanSec = span/1e9;
+
+    // vertical time grid (always)
+    ctx.strokeStyle = "rgba(38,52,74,.5)"; ctx.lineWidth = 1;
+    var step = niceStep(spanSec);
+    var firstTick = Math.ceil((t0/1e9)/step)*step;
+    for(var ts = firstTick; ts <= t1/1e9 + 1e-9; ts += step){
+      var gx = ((ts*1e9 - t0)/span)*w;
+      ctx.beginPath(); ctx.moveTo(gx, 8); ctx.lineTo(gx, h-10); ctx.stroke();
+    }
+
+    var rawOn = showRaw && channelCount > 0;
+    var baseY = Math.round(h * 0.62);
+    if(rawOn){
+      drawRawChannels(ctx, w, h, t0, t1, span);
+      if(showAnom) overlayAnomBands(ctx, w, h, t0, t1, span, col);
+    } else if(showAnom){
+      drawAnomBipolar(ctx, w, h, t0, t1, span, col, threshold, baseY);
+    } else {
+      ctx.font = '12px ui-monospace,monospace';
+      ctx.fillStyle = "rgba(116,132,154,.7)"; ctx.textAlign = "center";
+      var msg = (showRaw && channelCount===0) ? "No data columns in this file" : "Enable “Show Raw Data” or “Show Anomalies”";
+      ctx.fillText(msg, w/2, h/2); ctx.textAlign = "start";
+    }
+
+    // axis labels reflect the visible window (always)
+    var dp = spanSec < 1 ? 4 : (spanSec < 10 ? 3 : 2);
+    $("t-start").textContent = (t0/1e9).toFixed(dp)+" s  ·  "+clockInline(t0);
+    $("t-mid").textContent = ((t0+span/2)/1e9).toFixed(dp)+" s";
+    $("t-end").textContent = (t1/1e9).toFixed(dp)+" s  ·  "+clockInline(t1);
+
+    traceData = { col: col, w: w, baseY: baseY, topY: 14, threshold: threshold, raw: rawOn };
+  }
+
+  // current bipolar anomaly view: baseline + up(missing)/down(too-close) spikes
+  function drawAnomBipolar(ctx, w, h, t0, t1, span, col, threshold, baseY){
+    var topY = 14, bottomY = h - 12;
+    var upSpan = baseY - topY, downSpan = bottomY - baseY;
+
+    ctx.font = '9px ui-monospace,monospace';
+    ctx.fillStyle = "rgba(116,132,154,.55)"; ctx.textAlign = "left";
+    ctx.fillText("MISSING \u25B2", 6, topY + 4);
+    ctx.fillText("TOO CLOSE \u25BC", 6, bottomY - 2);
+
+    ctx.strokeStyle = "rgba(38,52,74,.7)";
+    ctx.beginPath(); ctx.moveTo(0,baseY+0.5); ctx.lineTo(w,baseY+0.5); ctx.stroke();
+
+    ctx.strokeStyle = "rgba(52,224,196,.9)"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(0, baseY); ctx.lineTo(w, baseY); ctx.stroke();
+    for(var gi=0; gi<gapEvents.length; gi++){
+      var gv = gapEvents[gi];
+      if(gv.end <= t0 || gv.start >= t1) continue;
+      var xa = ((gv.start - t0)/span)*w, xb = ((gv.end - t0)/span)*w;
+      if(xa < 0) xa = 0; if(xb > w) xb = w;
+      var wseg = xb - xa; if(wseg < 1.5) wseg = 1.5;
+      ctx.strokeStyle = spikeColor(gv.missing);
+      ctx.beginPath(); ctx.moveTo(xa, baseY); ctx.lineTo(xa + wseg, baseY); ctx.stroke();
+    }
+    ctx.lineWidth = 1;
+
+    var maxMiss = 1, i;
+    for(i=0;i<col.cols;i++){
+      if(col.maxGap[i] > threshold){
+        var m = Math.max(1, Math.round(col.maxGap[i]/intervalNs)-1);
+        if(m > maxMiss) maxMiss = m;
+      }
+    }
+    var denom = Math.log10(maxMiss + 1) || 1;
+
+    ctx.save();
+    for(var c2=0;c2<col.cols;c2++){
+      if(col.maxGap[c2] <= threshold) continue;
+      var miss = Math.max(1, Math.round(col.maxGap[c2]/intervalNs)-1);
+      var hgt = (Math.log10(miss+1)/denom) * upSpan; if(hgt < 5) hgt = 5;
+      var col2 = spikeColor(miss);
+      ctx.shadowColor = col2; ctx.shadowBlur = 6; ctx.strokeStyle = col2; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(c2+0.5, baseY); ctx.lineTo(c2+0.5, baseY - hgt); ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.shadowColor = "#9d8cff"; ctx.shadowBlur = 5; ctx.strokeStyle = "#9d8cff"; ctx.lineWidth = 1.4;
+    for(var c3=0;c3<col.cols;c3++){
+      var mg = col.minGap[c3];
+      if(!(mg < closeNs)) continue;
+      var deficit = (closeNs - mg) / closeNs; if(deficit < 0) deficit = 0; if(deficit > 1) deficit = 1;
+      var dh = deficit * downSpan; if(dh < 4) dh = 4;
+      ctx.beginPath(); ctx.moveTo(c3+0.5, baseY); ctx.lineTo(c3+0.5, baseY + dh); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.lineWidth = 1; ctx.textAlign = "start";
+  }
+
+  // raw value plot: each channel min/max-decimated, normalised to its own global range
+  function drawRawChannels(ctx, w, h, t0, t1, span){
+    var ch = channelColumns(w, t0, t1);
+    var top = 16, bot = h - 22;
+    var ymap = function(k, v){
+      var mn = chMin[k], mx = chMax[k], rng = mx - mn; if(!(rng > 0)) rng = 1;
+      return bot - ((v - mn)/rng) * (bot - top);
+    };
+    for(var k=0;k<channelCount;k++){
+      var color = chanColor(k);
+      // min/max envelope (faint)
+      ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+      for(var c=0;c<ch.cols;c++){
+        var mx = ch.maxs[k][c]; if(mx === -Infinity) continue;
+        var mn = ch.mins[k][c];
+        if(mx - mn <= 0) continue;
+        ctx.beginPath(); ctx.moveTo(c+0.5, ymap(k, mn)); ctx.lineTo(c+0.5, ymap(k, mx)); ctx.stroke();
+      }
+      // connecting midline
+      ctx.globalAlpha = 1; ctx.lineWidth = 1.3; ctx.strokeStyle = color;
+      ctx.beginPath(); var started = false;
+      for(var c2=0;c2<ch.cols;c2++){
+        var mxx = ch.maxs[k][c2]; if(mxx === -Infinity) continue;
+        var mid = (ch.mins[k][c2] + mxx) / 2;
+        var y = ymap(k, mid);
+        if(!started){ ctx.moveTo(c2+0.5, y); started = true; } else { ctx.lineTo(c2+0.5, y); }
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1; ctx.lineWidth = 1;
+  }
+
+  // overlay anomaly regions on top of the raw plot
+  function overlayAnomBands(ctx, w, h, t0, t1, span, col){
+    var top = 6, bot = h - 6;
+    // dropouts: translucent red bands spanning the missing interval
+    for(var gi=0; gi<gapEvents.length; gi++){
+      var gv = gapEvents[gi];
+      if(gv.end <= t0 || gv.start >= t1) continue;
+      var xa = ((gv.start - t0)/span)*w, xb = ((gv.end - t0)/span)*w;
+      if(xa < 0) xa = 0; if(xb > w) xb = w;
+      var wseg = Math.max(1.5, xb - xa);
+      ctx.fillStyle = "rgba(255,84,112,.16)"; ctx.fillRect(xa, top, wseg, bot-top);
+      ctx.strokeStyle = "rgba(255,84,112,.7)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(xa+0.5, top); ctx.lineTo(xa+0.5, bot); ctx.stroke();
+    }
+    // too-close: thin violet markers
+    ctx.strokeStyle = "rgba(157,140,255,.55)"; ctx.lineWidth = 1;
+    for(var c=0;c<col.cols;c++){
+      if(!(col.minGap[c] < closeNs)) continue;
+      ctx.beginPath(); ctx.moveTo(c+0.5, top); ctx.lineTo(c+0.5, bot); ctx.stroke();
+    }
+  }
+
+  // ---------- draw: heatmap ----------
+  var heatData = null;
+  function drawHeat(){
+    if(!showAnom) return;          // heatmap is an anomaly view
+    var canvas = $("heat");
+    var d = setup(canvas, 46);
+    var ctx = d.ctx, w = d.w, h = d.h;
+    ctx.clearRect(0,0,w,h);
+    var full = stats.durationNs || 1;
+    var col = columns(w, 0, full);
+    var expPerCol = (full / col.cols) / intervalNs;
+    for(var c=0;c<col.cols;c++){
+      var r = expPerCol > 0 ? col.present[c]/expPerCol : 1;
+      ctx.fillStyle = coverageColor(r);
+      ctx.fillRect(c, 0, 1.5, h);
+    }
+    // viewport indicator
+    var x0 = (viewStart/full)*w, x1 = (viewEnd/full)*w;
+    if(x1 - x0 < 2) x1 = x0 + 2;
+    ctx.fillStyle = "rgba(8,11,17,.62)";
+    ctx.fillRect(0, 0, x0, h);
+    ctx.fillRect(x1, 0, w - x1, h);
+    ctx.strokeStyle = "rgba(74,168,255,.95)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x0+0.5, 0.75, (x1-x0)-1, h-1.5);
+    ctx.fillStyle = "rgba(74,168,255,.95)";
+    ctx.fillRect(x0, 0, 2, h);
+    ctx.fillRect(x1-2, 0, 2, h);
+
+    heatData = { col: col, w: w, expPerCol: expPerCol, full: full };
+  }
+
+  function niceStep(totalSec){
+    var target = totalSec/8;
+    var steps = [0.001,0.002,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1,2,5,10,15,30,60,120,300,600,1800,3600];
+    for(var i=0;i<steps.length;i++){ if(steps[i] >= target) return steps[i]; }
+    return steps[steps.length-1];
+  }
+
+  // ---------- render results ----------
+  function render(){
+    analyze();
+    var rawCb = $("show-raw");
+    rawCb.disabled = (channelCount === 0);
+    if(channelCount === 0) showRaw = false;
+    rawCb.checked = showRaw;
+    $("show-anom").checked = showAnom;
+    buildChannelLegend();
+    $("th-time-drop").textContent = "Start time " + timeColHeader();
+    $("th-time-tight").textContent = "Time " + timeColHeader();
+    intervalIn.value = (intervalNs/1e6).toPrecision(6).replace(/\.?0+$/,"");
+    tolIn.value = tolerance;
+    closeIn.value = Math.round(closeNs/1e3);
+
+    // stats
+    var lossPct = stats.expected > 0 ? (stats.dropped/stats.expected*100) : 0;
+    var sg = $("statgrid");
+    var cards = [
+      ["Samples", fmtInt(stats.n), "", ""],
+      ["Duration", fmtDuration(stats.durationNs), "", ""],
+      ["Expected", fmtInt(stats.expected), "", ""],
+      ["Missing", fmtInt(stats.dropped), lossPct.toFixed(2)+"%", stats.dropped>0?"bad":"good"],
+      ["Drop events", fmtInt(stats.events), "", stats.events>0?"bad":"good"],
+      ["Too close", fmtInt(stats.tight), stats.tight>0 ? "min "+fmtGap(stats.tightest) : "", stats.tight>0?"tight":"good"],
+      ["Mean rate", stats.rate.toFixed(1), "Hz", ""]
+    ];
+    sg.innerHTML = cards.map(function(c){
+      return '<div class="stat"><div class="k">'+c[0]+'</div><div class="v '+(c[3]||"")+'">'+
+             c[1]+(c[2]?'<span class="u">'+c[2]+'</span>':'')+'</div></div>';
+    }).join("");
+
+    // verdict
+    var v = $("verdict"), vt = $("verdict-t"), vd = $("verdict-d");
+    var hasDrops = stats.dropped > 0 || stats.events > 0;
+    var hasTight = stats.tight > 0;
+    if(!hasDrops && !hasTight){
+      v.className = "verdict clean";
+      vt.textContent = "No timing anomalies";
+      vd.textContent = "Every interval sits within "+tolerance+"× of the "+fmtGap(intervalNs)+" nominal Δt and above the "+fmtGap(closeNs)+" floor.";
+    } else {
+      v.className = "verdict loss";
+      var parts = [];
+      if(hasDrops) parts.push(fmtInt(stats.dropped)+" missing across "+fmtInt(stats.events)+" dropout"+(stats.events===1?"":"s"));
+      if(hasTight) parts.push(fmtInt(stats.tight)+" arrival"+(stats.tight===1?"":"s")+" under "+fmtGap(closeNs));
+      vt.textContent = parts.join("  ·  ");
+      var det = [];
+      if(hasDrops) det.push("worst gap "+fmtGap(stats.worst)+" ≈ "+fmtInt(Math.max(0,Math.round(stats.worst/intervalNs)-1))+" samples");
+      if(hasTight) det.push("tightest "+fmtGap(stats.tightest));
+      vd.textContent = det.join("  ·  ") + ". Nominal Δt "+fmtGap(intervalNs)+".";
+    }
+
+    // anomaly note
+    var extras = [];
+    if(malformed) extras.push(fmtInt(malformed)+" unparseable line"+(malformed===1?"":"s")+" skipped");
+    if(outOfOrder) extras.push(fmtInt(outOfOrder)+" out-of-order timestamp"+(outOfOrder===1?"":"s"));
+    if(duplicates) extras.push(fmtInt(duplicates)+" duplicate timestamp"+(duplicates===1?"":"s"));
+    if(extras.length){ note.style.display="block"; note.textContent = extras.join("  ·  "); }
+    else note.style.display="none";
+
+    // initialise / preserve the zoom window
+    minWindowNs = Math.max(intervalNs * 5, stats.durationNs * 1e-5) || intervalNs * 5;
+    if(viewEnd <= viewStart || viewEnd > stats.durationNs + 1 || viewStart < 0){
+      viewStart = 0; viewEnd = stats.durationNs;   // reset to full on (re)load
+    } else {
+      clampView();                                  // keep window valid after re-analyse
+    }
+
+    // Make the container visible BEFORE drawing — a hidden canvas reports
+    // clientWidth 0, which would size the canvas to zero pixels (blank).
+    results.style.display = "block";
+
+    drawTrace();
+    drawHeat();
+    updateZoomLevel();
+    renderTable();
+    renderTightTable();
+    applyViewVisibility();
+  }
+
+  function buildChannelLegend(){
+    var el = $("chan-legend");
+    if(!channelCount){ el.innerHTML = ""; return; }
+    var fmtNum = function(v){
+      if(v === Infinity || v === -Infinity) return "—";
+      if(Number.isInteger(v)) return String(v);
+      return Math.abs(v) >= 1000 ? v.toFixed(0) : parseFloat(v.toPrecision(4)).toString();
+    };
+    el.innerHTML = channelNames.map(function(nm, k){
+      var rng = (chMin[k] === Infinity) ? "no data" : (fmtNum(chMin[k]) + "…" + fmtNum(chMax[k]));
+      return '<div class="item"><span class="sw" style="background:'+chanColor(k)+'"></span>'+
+             nm+' <span style="color:var(--text-faint)">['+rng+']</span></div>';
+    }).join("");
+  }
+
+  function applyViewVisibility(){
+    $("heat-block").style.display  = showAnom ? "block" : "none";
+    $("drop-block").style.display  = showAnom ? "block" : "none";
+    $("tight-block").style.display = (showAnom && tightEvents.length) ? "block" : "none";
+    $("anom-legend").style.display = showAnom ? "flex" : "none";
+    $("chan-legend").style.display = (showRaw && channelCount > 0) ? "flex" : "none";
+  }
+
+  function refreshView(){
+    if(!stats) return;
+    applyViewVisibility();
+    drawTrace();
+    drawHeat();
+  }
+
+  function renderTable(){
+    var tb = $("tbody");
+    var sorted = gapEvents.slice().sort(function(a,b){ return b.gapNs - a.gapNs; }).slice(0, 50);
+    if(!sorted.length){
+      tb.innerHTML = '<tr><td colspan="5" class="empty-rows">No dropouts above the current threshold — the stream is clean.</td></tr>';
+      return;
+    }
+    var durSec = stats.durationNs/1e9;
+    tb.innerHTML = sorted.map(function(e, i){
+      return '<tr>'+
+        '<td class="idx">'+(i+1)+'</td>'+
+        '<td class="time" title="'+(isAbsolute?absDate(e.start):absSecNum(e.start,9)+" s")+'">'+clockCell(e.start)+'</td>'+
+        '<td class="r">'+(e.start/1e9).toFixed(durSec<10?3:2)+' s</td>'+
+        '<td class="r">'+fmtGap(e.gapNs)+'</td>'+
+        '<td class="r miss">'+fmtInt(e.missing)+'</td>'+
+      '</tr>';
+    }).join("");
+  }
+
+  function renderTightTable(){
+    var block = $("tight-block"), tb = $("tbody-tight");
+    if(!tightEvents.length){ block.style.display = "none"; return; }
+    block.style.display = "block";
+    var sorted = tightEvents.slice().sort(function(a,b){ return a.gapNs - b.gapNs; }).slice(0, 50);
+    var durSec = stats.durationNs/1e9;
+    tb.innerHTML = sorted.map(function(e, i){
+      var under = closeNs - e.gapNs;
+      return '<tr>'+
+        '<td class="idx">'+(i+1)+'</td>'+
+        '<td class="time" title="'+(isAbsolute?absDate(e.start):absSecNum(e.start,9)+" s")+'">'+clockCell(e.start)+'</td>'+
+        '<td class="r">'+(e.start/1e9).toFixed(durSec<10?3:2)+' s</td>'+
+        '<td class="r" style="color:var(--tight)">'+fmtGap(e.gapNs)+'</td>'+
+        '<td class="r">'+fmtGap(under)+'</td>'+
+      '</tr>';
+    }).join("");
+  }
+
+  // ---------- hover + zoom + pan ----------
+  function bindHover(){
+    var traceRO = $("trace-ro"), traceCv = $("trace");
+    var heatRO = $("heat-ro"), heatCv = $("heat");
+
+    // panning state (trace)
+    var panning = false, panStartX = 0, panVS = 0, panVE = 0;
+    // minimap drag state (heat)
+    var hmDown = false, hmDownX = 0, hmMoved = false;
+
+    function localX(cv, ev){ return ev.clientX - cv.getBoundingClientRect().left; }
+
+    // ---- trace: hover readout ----
+    function showTraceReadout(x, mouseY){
+      if(!traceData) return;
+      var col = traceData.col, cols = col.cols;
+      var ci = Math.max(0, Math.min(cols-1, Math.round(x)));
+      var frac = x / (traceData.w || 1); if(frac < 0) frac = 0; if(frac > 1) frac = 1;
+      var off = col.t0 + frac*col.span;
+      var html = '<span class="lab">t</span> '+(off/1e9).toFixed(4)+' s &nbsp; '+clockInline(off);
+
+      // raw channel values at the nearest sample
+      if(traceData.raw && channelCount > 0){
+        var si = nearestSample(off);
+        if(si >= 0){
+          for(var ch=0; ch<channelCount; ch++){
+            var val = channels[ch][si];
+            var shown = (val === val) ? (Number.isInteger(val) ? val : (Math.abs(val) >= 1000 ? val.toFixed(1) : val.toFixed(4).replace(/0+$/,'').replace(/\.$/,''))) : "—";
+            html += '<br><span class="lab" style="color:'+chanColor(ch)+'">●</span> '+channelNames[ch]+' = '+shown;
+          }
+        }
+      }
+
+      var drewArrow = false;
+      if(showAnom){
+        var bestGap = 0, tightGap = Infinity;
+        for(var dd=-3; dd<=3; dd++){
+          var k = ci+dd; if(k<0||k>=cols) continue;
+          if(col.maxGap[k] > bestGap) bestGap = col.maxGap[k];
+          if(col.minGap[k] < tightGap) tightGap = col.minGap[k];
+        }
+        var flagged = false;
+        if(bestGap > traceData.threshold){
+          var miss = Math.max(1, Math.round(bestGap/intervalNs)-1);
+          html += '<br><span class="hi">gap '+fmtGap(bestGap)+' · '+miss+' missing</span>';
+          flagged = true;
+        }
+        if(tightGap < closeNs){
+          html += '<br><span class="tight">spacing '+fmtGap(tightGap)+' · too close</span>';
+          flagged = true;
+        }
+        if(!flagged && !traceData.raw) html += '<br><span class="ok">continuous</span>';
+
+        // Δt between the events bracketing the cursor (+ draw the arrow)
+        if(eventTimes.length){
+          var lo = 0, hi = eventTimes.length;
+          while(lo < hi){ var mid = (lo+hi)>>1; if(eventTimes[mid] <= off) lo = mid+1; else hi = mid; }
+          var left = lo-1 >= 0 ? eventList[lo-1] : null;
+          var right = lo < eventList.length ? eventList[lo] : null;
+          var tag = function(e){ return '<span class="'+(e.kind==="drop"?"hi":"tight")+'">'+e.kind+'</span>'; };
+          if(left && right){
+            var dt = right.t - left.t;
+            html += '<br><span class="lab">events</span> '+tag(left)+' <span class="lab">⟷</span> '+tag(right)+
+                    ' &nbsp;<b>Δt '+fmtGap(dt)+'</b>'+
+                    '<br><span class="lab">&nbsp;&nbsp;← '+fmtGap(off-left.t)+' · '+fmtGap(right.t-off)+' →</span>';
+            if(typeof mouseY === "number"){ drawMeasureArrow(mouseY, left, right); drewArrow = true; }
+          } else if(right){
+            html += '<br><span class="lab">→ next event</span> '+fmtGap(right.t-off);
+          } else if(left){
+            html += '<br><span class="lab">← prev event</span> '+fmtGap(off-left.t);
+          }
+        }
+      }
+      if(!drewArrow) clearOverlay();
+      traceRO.innerHTML = html;
+      traceRO.style.left = x + "px";
+      traceRO.style.top = (traceData.topY+10) + "px";
+      traceRO.style.opacity = 1;
+    }
+
+    traceCv.addEventListener("mousemove", function(ev){
+      if(panning) return;            // handled on window while dragging
+      var rect = traceCv.getBoundingClientRect();
+      showTraceReadout(ev.clientX - rect.left, ev.clientY - rect.top);
+    });
+    traceCv.addEventListener("mouseleave", function(){ if(!panning){ traceRO.style.opacity = 0; clearOverlay(); } });
+
+    // ---- trace: wheel zoom (anchored at cursor) ----
+    traceCv.addEventListener("wheel", function(ev){
+      if(!stats) return;
+      ev.preventDefault();
+      var rect = traceCv.getBoundingClientRect();
+      var frac = Math.max(0, Math.min(1, (ev.clientX - rect.left)/rect.width));
+      var span = viewEnd - viewStart;
+      var anchor = viewStart + frac*span;
+      var factor = ev.deltaY > 0 ? 1.2 : (1/1.2);
+      var newSpan = span * factor;
+      var full = stats.durationNs;
+      if(newSpan > full) newSpan = full;
+      if(newSpan < minWindowNs) newSpan = minWindowNs;
+      viewStart = anchor - frac*newSpan;
+      viewEnd = viewStart + newSpan;
+      clampView();
+      scheduleDraw();
+    }, { passive: false });
+
+    // ---- trace: drag to pan ----
+    traceCv.addEventListener("mousedown", function(ev){
+      if(!stats) return;
+      panning = true; panStartX = ev.clientX; panVS = viewStart; panVE = viewEnd;
+      traceCv.style.cursor = "grabbing";
+      traceRO.style.opacity = 0;
+      clearOverlay();
+      ev.preventDefault();
+    });
+    traceCv.addEventListener("dblclick", function(){
+      if(!stats) return;
+      viewStart = 0; viewEnd = stats.durationNs; scheduleDraw();
+    });
+
+    // ---- heatmap: hover + click/drag navigation ----
+    function showHeatReadout(x){
+      if(!heatData) return;
+      var col = heatData.col, cols = col.cols;
+      var ci = Math.max(0, Math.min(cols-1, Math.round(x)));
+      var present = col.present[ci];
+      var exp = heatData.expPerCol;
+      var miss = Math.max(0, Math.round(exp - present));
+      var t0 = (ci/cols)*heatData.full, t1 = ((ci+1)/cols)*heatData.full;
+      heatRO.innerHTML = '<span class="lab">slice</span> '+(t0/1e9).toFixed(3)+'–'+(t1/1e9).toFixed(3)+' s'+
+        '<br>'+fmtInt(present)+' / '+fmtInt(exp)+' samples'+(miss>0?' &nbsp;<span class="hi">−'+fmtInt(miss)+'</span>':' &nbsp;<span class="ok">ok</span>');
+      heatRO.style.left = x + "px";
+      heatRO.style.top = "8px";
+      heatRO.style.opacity = 1;
+    }
+    heatCv.addEventListener("mousemove", function(ev){
+      if(hmDown) return;             // handled on window while dragging
+      showHeatReadout(localX(heatCv, ev));
+    });
+    heatCv.addEventListener("mouseleave", function(){ if(!hmDown) heatRO.style.opacity = 0; });
+    heatCv.addEventListener("mousedown", function(ev){
+      if(!stats) return;
+      hmDown = true; hmMoved = false; hmDownX = localX(heatCv, ev);
+      heatRO.style.opacity = 0;
+      ev.preventDefault();
+    });
+
+    // ---- window-level drag handling (works even if cursor leaves the canvas) ----
+    window.addEventListener("mousemove", function(ev){
+      if(panning){
+        var rect = traceCv.getBoundingClientRect();
+        var span = panVE - panVS;
+        var dx = ev.clientX - panStartX;
+        var dt = -(dx/rect.width) * span;
+        viewStart = panVS + dt; viewEnd = panVE + dt;
+        clampView();
+        scheduleDraw();
+      } else if(hmDown){
+        var hrect = heatCv.getBoundingClientRect();
+        var x = ev.clientX - hrect.left;
+        if(Math.abs(x - hmDownX) > 3){
+          hmMoved = true;
+          var full = heatData.full;
+          var a = (Math.min(hmDownX, x)/hrect.width)*full;
+          var b = (Math.max(hmDownX, x)/hrect.width)*full;
+          viewStart = a; viewEnd = b; clampView(); scheduleDraw();
+        }
+      }
+    });
+    window.addEventListener("mouseup", function(ev){
+      if(panning){ panning = false; traceCv.style.cursor = "crosshair"; }
+      if(hmDown){
+        if(!hmMoved){
+          // click: recentre current window on the clicked time
+          var hrect = heatCv.getBoundingClientRect();
+          var x = ev.clientX - hrect.left;
+          if(x >= 0 && x <= hrect.width){
+            var full = heatData.full;
+            var t = (x/hrect.width)*full;
+            var span = viewEnd - viewStart;
+            viewStart = t - span/2; viewEnd = t + span/2; clampView(); scheduleDraw();
+          }
+        }
+        hmDown = false;
+      }
+    });
+  }
+
+  // ---------- file handling ----------
+  function showError(msg){
+    note.style.display = "block";
+    note.textContent = msg;
+    results.style.display = "none";
+    applyBtn.disabled = true;
+  }
+
+  function handleFile(file){
+    note.style.display = "none";
+    results.style.display = "none";
+    drop.style.display = "none";
+    loaded.style.display = "none";
+    progress.style.display = "block";
+    pfill.style.width = "0%";
+    ptxt.textContent = "Reading " + file.name + "…";
+
+    var reader = new FileReader();
+    reader.onerror = function(){ progress.style.display="none"; drop.style.display="block"; showError("Could not read that file."); };
+    reader.onload = function(){
+      var text = reader.result;
+      ptxt.textContent = "Splitting lines…";
+      resetData();
+      setTimeout(function(){
+        var lines = text.split(/\r?\n/);
+        processLines(lines).then(function(){
+          progress.style.display = "none";
+          if(offsets.length < 2){
+            drop.style.display = "block";
+            showError("Found "+offsets.length+" timestamped row(s). Expecting a CSV with a time column like 2026-06-09 22:20:33.475999832+00:00 in the first field.");
+            return;
+          }
+          // auto-detect interval from median gap (unless user pinned one already)
+          detectedNs = median(gaps);
+          // epoch/wall-clock vs relative elapsed seconds: a first sample beyond
+          // ~1973 in epoch terms is treated as an absolute timestamp.
+          isAbsolute = firstNs > 100000000000000000n;
+          if(!intervalIn.value || intervalIn.dataset.auto !== "no"){
+            intervalNs = detectedNs;
+            intervalIn.dataset.auto = "yes";
+          } else {
+            intervalNs = parseFloat(intervalIn.value)*1e6 || detectedNs;
+          }
+          tolerance = parseFloat(tolIn.value) || 1.5;
+          var cv0 = parseFloat(closeIn.value);
+          if(cv0 >= 0) closeNs = cv0*1e3;
+
+          $("fname").textContent = file.name;
+          $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs);
+          loaded.style.display = "flex";
+          applyBtn.disabled = false;
+          render();
+        });
+      }, 0);
+    };
+    reader.readAsText(file);
+  }
+
+  // drag/drop + click
+  drop.addEventListener("click", function(){ fileInput.click(); });
+  fileInput.addEventListener("change", function(){ if(fileInput.files[0]) handleFile(fileInput.files[0]); });
+  ["dragenter","dragover"].forEach(function(e){
+    drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.add("over"); });
+  });
+  ["dragleave","drop"].forEach(function(e){
+    drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.remove("over"); });
+  });
+  drop.addEventListener("drop", function(ev){
+    var f = ev.dataTransfer.files[0]; if(f) handleFile(f);
+  });
+  // allow dropping anywhere once loaded
+  window.addEventListener("dragover", function(e){ e.preventDefault(); });
+  window.addEventListener("drop", function(e){
+    e.preventDefault();
+    if(loaded.style.display !== "none" && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+  $("reload").addEventListener("click", function(){
+    fileInput.value = "";
+    fileInput.click();
+  });
+
+  // apply settings
+  applyBtn.addEventListener("click", function(){
+    var iv = parseFloat(intervalIn.value);
+    if(iv > 0){ intervalNs = iv*1e6; intervalIn.dataset.auto = "no"; }
+    var tv = parseFloat(tolIn.value);
+    if(tv >= 1){ tolerance = tv; }
+    var cv = parseFloat(closeIn.value);
+    if(cv >= 0){ closeNs = cv*1e3; }
+    if(offsets.length >= 2) render();
+  });
+  intervalIn.addEventListener("input", function(){ intervalIn.dataset.auto = "no"; });
+  [intervalIn, tolIn, closeIn].forEach(function(el){
+    el.addEventListener("keydown", function(e){ if(e.key === "Enter") applyBtn.click(); });
+  });
+
+  // reset zoom
+  $("zreset").addEventListener("click", function(){
+    if(!stats) return;
+    viewStart = 0; viewEnd = stats.durationNs; scheduleDraw();
+  });
+
+  // view-layer toggles
+  $("show-raw").addEventListener("change", function(){ showRaw = this.checked; refreshView(); });
+  $("show-anom").addEventListener("change", function(){ showAnom = this.checked; refreshView(); });
+
+  // redraw on resize
+  var rt;
+  window.addEventListener("resize", function(){
+    if(!stats) return;
+    clearTimeout(rt);
+    rt = setTimeout(function(){ drawTrace(); drawHeat(); }, 120);
+  });
+
+  bindHover();
+})();
+</script>
+</body>
+</html>
