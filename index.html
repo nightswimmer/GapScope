@@ -339,11 +339,13 @@ time
     </div>
 
     <div class="block" id="heat-block">
-      <p class="eyebrow">Coverage heatmap — full capture · click or drag to navigate the trace above</p>
+      <p class="eyebrow">Coverage heatmap — full capture · worst dropout per slice · click or drag to navigate the trace above</p>
       <div class="legend">
-        <div class="item"><span class="sw" style="background:var(--phosphor)"></span>complete</div>
-        <div class="item"><span class="sw" style="background:hsl(55 78% 55%)"></span>partial</div>
-        <div class="item"><span class="sw" style="background:var(--drop)"></span>sparse</div>
+        <div class="item"><span class="sw" style="background:var(--phosphor)"></span>continuous</div>
+        <div class="item"><span class="sw" style="background:var(--warn)"></span>1 missing</div>
+        <div class="item"><span class="sw" style="background:var(--orange)"></span>2–9</div>
+        <div class="item"><span class="sw" style="background:var(--drop)"></span>10–99</div>
+        <div class="item"><span class="sw" style="background:var(--drop-hot)"></span>100+</div>
       </div>
       <div class="canvas-wrap" id="heat-wrap" style="padding-bottom:14px">
         <canvas id="heat"></canvas>
@@ -415,6 +417,13 @@ time
   // ---------- view window (zoom) ----------
   var viewStart = 0, viewEnd = 0;   // visible time window, ns offsets
   var minWindowNs = 1e6;            // tightest zoom; set after analyze
+  // full-capture heatmap columns cache (rebuilt only on new data or resize)
+  var heatEpoch = 0, heatCache = null;
+  // multi-resolution aggregate pyramid (LOD), built once per capture: lets the
+  // trace draw from coarse precomputed clusters instead of scanning every raw
+  // sample when zoomed out. See buildPyramid / pickLevel.
+  var LOD_BASE = 64;        // raw samples per finest pyramid bin
+  var pyramid = null;       // { base, levels:[ {size,n,t,maxGap,minGap,present,cmin[],cmax[]} ] }
   var drawPending = false;
 
   // ---------- elements ----------
@@ -460,6 +469,8 @@ time
     channels = []; channelNames = []; channelCount = 0; chMin = []; chMax = [];
     malformed = 0; outOfOrder = 0; duplicates = 0;
     viewStart = 0; viewEnd = 0;   // force full-extent view for the new capture
+    heatEpoch++; heatCache = null;   // invalidate the cached heatmap columns
+    pyramid = null;                  // drop the old LOD pyramid
   }
 
   // Per-line parser. Holds parse state (header detection, ordering) across
@@ -639,13 +650,6 @@ time
   function timeColHeader(){ return isAbsolute ? "(UTC)" : "(s)"; }
 
   // ---------- colors ----------
-  function lerp(a,b,t){ return a+(b-a)*t; }
-  function coverageColor(r){
-    if(r >= 0.9995) return "rgb(52,224,196)";
-    r = Math.max(0, Math.min(1, r));
-    var h = lerp(352, 168, r), s = lerp(86, 68, r), l = lerp(58, 53, r);
-    return "hsl("+h+" "+s+"% "+l+"%)";
-  }
   function spikeColor(miss){
     if(miss <= 1) return "#f5b13d";
     if(miss < 10) return "#ff8a3d";
@@ -674,6 +678,18 @@ time
     var lo = 0, hi = offsets.length;
     while(lo < hi){ var mid = (lo+hi)>>1; if(offsets[mid] < x) lo = mid+1; else hi = mid; }
     return lo;
+  }
+  // [lo, hi) range of gapEvents intersecting [t0, t1]. gapEvents are sorted by
+  // both start and end (they're consecutive sample intervals), so each bound is
+  // a binary search — dropout drawing stays O(visible) on big, glitchy captures.
+  function visibleGapRange(t0, t1){
+    var n = gapEvents.length, lo, hi, m;
+    lo = 0; hi = n;   // first event whose end > t0
+    while(lo < hi){ m = (lo+hi)>>1; if(gapEvents[m].end <= t0) lo = m+1; else hi = m; }
+    var first = lo;
+    hi = n;           // first event (from `first` on) whose start >= t1
+    while(lo < hi){ m = (lo+hi)>>1; if(gapEvents[m].start < t1) lo = m+1; else hi = m; }
+    return { lo: first, hi: lo };
   }
 
   // ---------- measurement overlay (hover arrow between bracketing events) ----------
@@ -779,7 +795,78 @@ time
   }
 
   // per-pixel column aggregation over the time window [t0, t1]
-  function columns(width, t0, t1){
+  // ---------- LOD pyramid ----------
+  function newLevel(n, size){
+    var L = { size:size, n:n, t:new Float64Array(n), maxGap:new Float64Array(n),
+              minGap:new Float64Array(n), present:new Float64Array(n), cmin:[], cmax:[] };
+    for(var k=0;k<channelCount;k++){ L.cmin[k]=new Float64Array(n); L.cmax[k]=new Float64Array(n); }
+    return L;
+  }
+  // Build a pyramid of aggregate clusters once per capture. The finest level
+  // bins LOD_BASE raw samples; each coarser level merges pairs. Each bin owns
+  // the gaps leaving its samples (gaps[a..e-1]), so a dropout at a bin boundary
+  // is still captured. O(N) time, ~N/32 extra memory.
+  function buildPyramid(){
+    pyramid = null;
+    var N = offsets.length;
+    if(N < LOD_BASE*4) return;        // small enough that raw scans stay cheap
+    var base = LOD_BASE, n0 = Math.ceil(N/base), gn = gaps.length;
+    var lv = newLevel(n0, base), b, k;
+    for(b=0; b<n0; b++){
+      var a = b*base, e = Math.min(a+base, N);
+      var mg = 0, ng = Infinity, gEnd = Math.min(e-1, gn-1);
+      for(var j=a; j<=gEnd; j++){
+        var g = gaps[j];
+        if(g > mg) mg = g;
+        if(g >= 0 && g < ng) ng = g;
+      }
+      lv.maxGap[b]=mg; lv.minGap[b]=ng; lv.present[b]=e-a; lv.t[b]=offsets[a];
+      for(k=0;k<channelCount;k++){
+        var cmn=Infinity, cmx=-Infinity, arr=channels[k];
+        for(var i=a;i<e;i++){ var v=arr[i]; if(v===v){ if(v<cmn)cmn=v; if(v>cmx)cmx=v; } }
+        lv.cmin[k][b]=cmn; lv.cmax[k][b]=cmx;
+      }
+    }
+    var levels = [lv];
+    while(levels[levels.length-1].n > 2){
+      var prev = levels[levels.length-1], nn = Math.ceil(prev.n/2);
+      var nl = newLevel(nn, prev.size*2), c;
+      for(c=0; c<nn; c++){
+        var i0=c*2, i1=i0+1, two = i1 < prev.n;
+        nl.maxGap[c] = two ? Math.max(prev.maxGap[i0],prev.maxGap[i1]) : prev.maxGap[i0];
+        nl.minGap[c] = two ? Math.min(prev.minGap[i0],prev.minGap[i1]) : prev.minGap[i0];
+        nl.present[c]= prev.present[i0] + (two ? prev.present[i1] : 0);
+        nl.t[c] = prev.t[i0];
+        for(k=0;k<channelCount;k++){
+          nl.cmin[k][c] = two ? Math.min(prev.cmin[k][i0],prev.cmin[k][i1]) : prev.cmin[k][i0];
+          nl.cmax[k][c] = two ? Math.max(prev.cmax[k][i0],prev.cmax[k][i1]) : prev.cmax[k][i0];
+        }
+      }
+      levels.push(nl);
+    }
+    pyramid = { base: base, levels: levels };
+  }
+  // coarsest level whose bins are still ≤ 1 pixel wide (size ≤ samples/pixel),
+  // or null when raw scanning is cheap enough / no pyramid exists
+  function pickLevel(visibleSamples, cols){
+    if(!pyramid) return null;
+    var spp = visibleSamples / cols;
+    if(spp < pyramid.base) return null;
+    var levels = pyramid.levels, chosen = null;
+    for(var i=0;i<levels.length;i++){
+      if(levels[i].size <= spp) chosen = levels[i]; else break;
+    }
+    return chosen;
+  }
+  // index of the first pyramid bin whose start time is < t (so the straddling
+  // bin is included by stepping back one); bins are time-sorted
+  function firstBin(L, t){
+    var lo=0, hi=L.n, m;
+    while(lo<hi){ m=(lo+hi)>>1; if(L.t[m] < t) lo=m+1; else hi=m; }
+    return Math.max(0, lo-1);
+  }
+
+  function columns(width, t0, t1, forceRaw){
     var cols = Math.max(1, width|0);
     var present = new Float64Array(cols);
     var maxGap = new Float64Array(cols);
@@ -788,19 +875,42 @@ time
     var iStart = lowerBound(t0);
     var iEnd = lowerBound(t1);
     var i, c;
+    var level = forceRaw ? null : pickLevel(iEnd - iStart, cols);
+    if(level){
+      // aggregate from precomputed clusters: O(visible bins) ≈ O(cols)
+      for(i = firstBin(level, t0); i < level.n; i++){
+        var bt = level.t[i];
+        if(bt >= t1) break;
+        var btN = (i+1 < level.n) ? level.t[i+1] : t1;   // bin's end time
+        var cs0 = ((bt-t0)/span*cols)|0; if(cs0<0)cs0=0; if(cs0>=cols)cs0=cols-1;
+        present[cs0] += level.present[i];                // samples cluster at bin start
+        var ce0 = (((btN>t1?t1:btN)-t0)/span*cols)|0; if(ce0<0)ce0=0; if(ce0>=cols)ce0=cols-1;
+        if(ce0 < cs0) ce0 = cs0;
+        var mg0 = level.maxGap[i], ng0 = level.minGap[i];
+        for(c = cs0; c <= ce0; c++){                     // spread gap over its time extent
+          if(mg0 > maxGap[c]) maxGap[c] = mg0;
+          if(ng0 < minGap[c]) minGap[c] = ng0;
+        }
+      }
+      return { cols: cols, present: present, maxGap: maxGap, minGap: minGap, t0: t0, t1: t1, span: span };
+    }
     for(i = iStart; i < iEnd; i++){
       c = ((offsets[i]-t0)/span*cols)|0; if(c<0)c=0; if(c>=cols)c=cols-1;
       present[c]++;
     }
-    // gaps[k] spans offsets[k]..offsets[k+1]; include any that intersect the window
+    // gaps[k] spans offsets[k]..offsets[k+1]; include any that intersect the
+    // window and spread it across every column it covers (not just its start)
+    // so a wide dropout fills its full pixel extent in the collapsed renderer
     var gStart = Math.max(0, iStart-1);
     for(var k = gStart; k < iEnd && k < gaps.length; k++){
-      var s = offsets[k], e = offsets[k+1];
+      var s = offsets[k], e = offsets[k+1], gk = gaps[k];
       if(e <= t0 || s >= t1) continue;
-      var px = s < t0 ? t0 : s;
-      c = ((px-t0)/span*cols)|0; if(c<0)c=0; if(c>=cols)c=cols-1;
-      if(gaps[k] > maxGap[c]) maxGap[c] = gaps[k];
-      if(gaps[k] >= 0 && gaps[k] < minGap[c]) minGap[c] = gaps[k];
+      var cs = (((s < t0 ? t0 : s)-t0)/span*cols)|0; if(cs<0)cs=0; if(cs>=cols)cs=cols-1;
+      var ce = (((e > t1 ? t1 : e)-t0)/span*cols)|0; if(ce<0)ce=0; if(ce>=cols)ce=cols-1;
+      for(c = cs; c <= ce; c++){
+        if(gk > maxGap[c]) maxGap[c] = gk;
+        if(gk >= 0 && gk < minGap[c]) minGap[c] = gk;
+      }
     }
     return { cols: cols, present: present, maxGap: maxGap, minGap: minGap, t0: t0, t1: t1, span: span };
   }
@@ -814,6 +924,21 @@ time
     for(var k=0;k<channelCount;k++){
       mins[k] = new Float64Array(cols).fill(Infinity);
       maxs[k] = new Float64Array(cols).fill(-Infinity);
+    }
+    var level = pickLevel(iEnd - iStart, cols);
+    if(level){
+      // aggregate channel envelopes from precomputed clusters
+      for(var bi = firstBin(level, t0); bi < level.n; bi++){
+        var bt = level.t[bi];
+        if(bt >= t1) break;
+        var cc = ((bt-t0)/span*cols)|0; if(cc<0)cc=0; if(cc>=cols)cc=cols-1;
+        for(var kk=0;kk<channelCount;kk++){
+          var mn = level.cmin[kk][bi], mx = level.cmax[kk][bi];
+          if(mn !== Infinity && mn < mins[kk][cc]) mins[kk][cc] = mn;
+          if(mx !== -Infinity && mx > maxs[kk][cc]) maxs[kk][cc] = mx;
+        }
+      }
+      return { cols: cols, mins: mins, maxs: maxs };
     }
     for(var i=iStart;i<iEnd;i++){
       var c = ((offsets[i]-t0)/span*cols)|0; if(c<0)c=0; if(c>=cols)c=cols-1;
@@ -932,10 +1057,9 @@ time
     // When the expected spacing falls under ~2px the messages can't be resolved
     // individually, so fall back to one spike per pixel column for that burst.
     var maxMiss = 1, gi2, gv2;
-    for(gi2=0; gi2<gapEvents.length; gi2++){
-      gv2 = gapEvents[gi2];
-      if(gv2.end <= t0 || gv2.start >= t1) continue;
-      if(gv2.missing > maxMiss) maxMiss = gv2.missing;
+    var gr = visibleGapRange(t0, t1);   // only the dropouts on screen
+    for(gi2=gr.lo; gi2<gr.hi; gi2++){
+      if(gapEvents[gi2].missing > maxMiss) maxMiss = gapEvents[gi2].missing;
     }
     var denom = Math.log10(maxMiss + 1) || 1;
     var ghostPx = intervalNs > 0 ? (intervalNs/span)*w : 0;
@@ -943,9 +1067,8 @@ time
 
     ctx.save();
     if(ghostPx >= 2){
-      for(gi2=0; gi2<gapEvents.length; gi2++){
+      for(gi2=gr.lo; gi2<gr.hi; gi2++){
         gv2 = gapEvents[gi2];
-        if(gv2.end <= t0 || gv2.start >= t1) continue;
         var c1 = spikeColor(gv2.missing), hgt1 = missHeight(gv2.missing);
         ctx.shadowColor = c1; ctx.shadowBlur = 6; ctx.strokeStyle = c1; ctx.lineWidth = 1.4;
         var kStart = Math.max(1, Math.ceil((t0 - gv2.start)/intervalNs));
@@ -1021,9 +1144,9 @@ time
     // dropouts: one vertical line per missing message at its expected arrival
     // time, coloured by gap severity; collapse to a faint band when sub-pixel dense
     var ghostPx = intervalNs > 0 ? (intervalNs/span)*w : 0;
-    for(var gi=0; gi<gapEvents.length; gi++){
+    var gr = visibleGapRange(t0, t1);   // only the dropouts on screen
+    for(var gi=gr.lo; gi<gr.hi; gi++){
       var gv = gapEvents[gi];
-      if(gv.end <= t0 || gv.start >= t1) continue;
       if(ghostPx >= 2){
         ctx.save();
         ctx.strokeStyle = spikeColor(gv.missing); ctx.globalAlpha = 0.85; ctx.lineWidth = 1;
@@ -1080,11 +1203,28 @@ time
     var ctx = d.ctx, w = d.w, h = d.h;
     ctx.clearRect(0,0,w,h);
     var full = stats.durationNs || 1;
-    var col = columns(w, 0, full);
+    // the full-capture columns depend only on the data and canvas width, not on
+    // the view window — cache them so panning/zooming a big capture isn't O(N)
+    // per frame. Only the viewport box below changes between frames.
+    var col;
+    if(heatCache && heatCache.epoch === heatEpoch && heatCache.w === w){
+      col = heatCache.col;
+    } else {
+      col = columns(w, 0, full, true);   // forceRaw: exact full-capture coverage (cached, so O(N) once)
+      heatCache = { epoch: heatEpoch, w: w, col: col };
+    }
     var expPerCol = (full / col.cols) / intervalNs;
+    var threshold = intervalNs * tolerance;
     for(var c=0;c<col.cols;c++){
-      var r = expPerCol > 0 ? col.present[c]/expPerCol : 1;
-      ctx.fillStyle = coverageColor(r);
+      // worst-case colouring: the slice takes the colour of its most severe
+      // dropout, so a single bad gap lights up even amid many good samples
+      var worst = col.maxGap[c];
+      if(worst > threshold){
+        var miss = Math.max(1, Math.round(worst/intervalNs)-1);
+        ctx.fillStyle = spikeColor(miss);
+      } else {
+        ctx.fillStyle = "rgb(52,224,196)";   // continuous (phosphor)
+      }
       ctx.fillRect(c, 0, 1.5, h);
     }
     // viewport indicator
@@ -1422,8 +1562,14 @@ time
       var exp = heatData.expPerCol;
       var miss = Math.max(0, Math.round(exp - present));
       var t0 = (ci/cols)*heatData.full, t1 = ((ci+1)/cols)*heatData.full;
+      // worst single dropout in this slice (drives the slice colour)
+      var worst = col.maxGap[ci], threshold = intervalNs * tolerance;
+      var worstStr = worst > threshold
+        ? '<br><span class="hi">worst gap '+fmtGap(worst)+' · '+fmtInt(Math.max(1, Math.round(worst/intervalNs)-1))+' missing</span>'
+        : '';
       heatRO.innerHTML = '<span class="lab">slice</span> '+(t0/1e9).toFixed(3)+'–'+(t1/1e9).toFixed(3)+' s'+
-        '<br>'+fmtInt(present)+' / '+fmtInt(exp)+' samples'+(miss>0?' &nbsp;<span class="hi">−'+fmtInt(miss)+'</span>':' &nbsp;<span class="ok">ok</span>');
+        '<br>'+fmtInt(present)+' / '+fmtInt(exp)+' samples'+(miss>0?' &nbsp;<span class="hi">−'+fmtInt(miss)+'</span>':' &nbsp;<span class="ok">ok</span>')+
+        worstStr;
       heatRO.style.left = x + "px";
       heatRO.style.top = "8px";
       heatRO.style.opacity = 1;
@@ -1559,35 +1705,43 @@ time
     resetData();
     setTimeout(function(){
         streamParse(file).then(function(){
-          progress.style.display = "none";
           if(offsets.length < 2){
+            progress.style.display = "none";
             drop.style.display = "block";
             showError("Found "+offsets.length+" timestamped row(s). Expecting a CSV with a time column like 2026-06-09 22:20:33.475999832+00:00 in the first field.");
             return;
           }
-          // auto-detect interval from median gap (unless user pinned one already)
-          detectedNs = median(gaps);
-          // epoch/wall-clock vs relative elapsed seconds: a first sample beyond
-          // ~1973 in epoch terms is treated as an absolute timestamp.
-          isAbsolute = firstNs > 100000000000000000n;
-          if(!intervalIn.value || intervalIn.dataset.auto !== "no"){
-            intervalNs = detectedNs;
-            intervalIn.dataset.auto = "yes";
-          } else {
-            intervalNs = parseFloat(intervalIn.value)*1e6 || detectedNs;
-          }
-          tolerance = parseFloat(tolIn.value) || 1.5;
-          var cv0 = parseFloat(closeIn.value);
-          if(cv0 >= 0) closeNs = cv0*1e3;
+          // build the multi-resolution overview (heavy, O(N)) after letting the
+          // progress message paint
+          ptxt.textContent = "Building overview…";
+          pfill.style.width = "100%";
+          setTimeout(function(){
+            buildPyramid();
+            progress.style.display = "none";
+            // auto-detect interval from median gap (unless user pinned one already)
+            detectedNs = median(gaps);
+            // epoch/wall-clock vs relative elapsed seconds: a first sample beyond
+            // ~1973 in epoch terms is treated as an absolute timestamp.
+            isAbsolute = firstNs > 100000000000000000n;
+            if(!intervalIn.value || intervalIn.dataset.auto !== "no"){
+              intervalNs = detectedNs;
+              intervalIn.dataset.auto = "yes";
+            } else {
+              intervalNs = parseFloat(intervalIn.value)*1e6 || detectedNs;
+            }
+            tolerance = parseFloat(tolIn.value) || 1.5;
+            var cv0 = parseFloat(closeIn.value);
+            if(cv0 >= 0) closeNs = cv0*1e3;
 
-          var loadMs = performance.now() - loadStart;
-          var loadStr = loadMs >= 1000 ? (loadMs/1000).toFixed(2)+" s" : Math.round(loadMs)+" ms";
-          $("fname").textContent = file.name;
-          $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)+" · loaded in "+loadStr;
-          loaded.style.display = "flex";
-          applyBtn.disabled = false;
-          autoBtn.disabled = false;
-          render();
+            var loadMs = performance.now() - loadStart;
+            var loadStr = loadMs >= 1000 ? (loadMs/1000).toFixed(2)+" s" : Math.round(loadMs)+" ms";
+            $("fname").textContent = file.name;
+            $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)+" · loaded in "+loadStr;
+            loaded.style.display = "flex";
+            applyBtn.disabled = false;
+            autoBtn.disabled = false;
+            render();
+          }, 0);
         }).catch(function(){
           progress.style.display = "none"; drop.style.display = "block";
           showError("Could not read that file.");
