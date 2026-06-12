@@ -109,6 +109,10 @@
   .loaded .meta{color:var(--text-dim);font-size:12px}
   .loaded a.reload{color:var(--accent);cursor:pointer;font-size:12px;text-decoration:none;border-bottom:1px solid transparent}
   .loaded a.reload:hover{border-bottom-color:var(--accent)}
+  .loaded .regsel{background:var(--panel);color:var(--text);border:1px solid var(--line-bright);border-radius:6px;
+    padding:4px 8px;font-family:var(--mono);font-size:12px;cursor:pointer}
+  .drop a.folderlink{color:var(--accent);cursor:pointer;border-bottom:1px solid transparent}
+  .drop a.folderlink:hover{border-bottom-color:var(--accent)}
 
   /* progress */
   .progress{display:none;margin-top:18px}
@@ -269,8 +273,9 @@
   <!-- drop zone -->
   <div class="drop" id="drop">
     <input type="file" id="file" accept=".csv,.txt,.bin,.harp,.yml,.yaml,text/csv,text/plain" multiple style="display:none">
+    <input type="file" id="dir" webkitdirectory style="display:none">
     <p class="big">Drop your capture here</p>
-    <p class="small">or click to browse — CSV or Harp <code>.bin</code> (drop a <code>device.yml</code> with it for names). Stays on your machine, nothing is uploaded.</p>
+    <p class="small">or click to browse — CSV, or Harp <code>.bin</code> files (<a class="folderlink" id="pickfolder">pick a folder</a> / drop several to combine one register; add a <code>device.yml</code> for names). Stays on your machine, nothing is uploaded.</p>
     <div class="fmt">time,analog_input0,encoder,analog_input1
 2026-06-09 22:20:33.475999832+00:00,7,0,7
 2026-06-09 22:20:33.476992130+00:00,7,0,8
@@ -284,6 +289,7 @@ time
   <div class="loaded" id="loaded">
     <div class="file"><span class="dot"></span><span class="name" id="fname"></span></div>
     <div class="meta" id="fmeta"></div>
+    <select class="regsel" id="regsel" style="display:none" title="Choose which Harp register to analyze"></select>
     <a class="reload" id="reload">Load another capture</a>
   </div>
 
@@ -408,6 +414,11 @@ time
   // kept across loads so one schema labels successive per-register .bin files,
   // plus a short description of the most recent binary load for the meta line.
   var harpSchema = null, harpInfo = "";
+  // Multi-file Harp loads: header scan of the dropped/picked .bin set, grouped by
+  // register address, so same-register files can be concatenated into one timeline
+  // and the user can switch which register is analyzed. Null for CSV / single-bin.
+  var harpFiles = null;   // { byAddr: {addr:[{file,firstTs,size}]}, addresses:[…] }
+  var harpAddr = null;    // register address currently concatenated
   // Harp time is seconds since 1904-01-01; Unix epoch is 1970-01-01, which is
   // later by 2082844800 s. Subtracting this offset (in ns) from a clock-synced
   // Harp timestamp gives Unix-epoch ns so absolute/wall-clock mode reads right.
@@ -671,35 +682,85 @@ time
     return { feed: feed };
   }
 
-  // Stream a Harp .bin in byte chunks (same chunked reader as streamParse), but
-  // walk fixed-stride binary messages instead of decoding text lines.
-  function streamParseBinary(file){
+  // Stream one or more Harp .bin files in byte chunks (same chunked reader as
+  // streamParse) through a SINGLE parser, so same-register files concatenate into
+  // one continuous timeline. Files are read in the given order; the carry is
+  // reset at each file boundary (files hold whole messages). Walks fixed-stride
+  // binary messages instead of decoding text lines.
+  function streamParseBinaryFiles(files){
     return new Promise(function(resolve, reject){
       var chunkMB = parseFloat($("chunk").value);
       if(!(chunkMB > 0)) chunkMB = 8;
       var CHUNK = Math.round(chunkMB * 1024 * 1024);
       var parser = makeHarpParser();
-      var carry = new Uint8Array(0);
-      var pos = 0, total = file.size || 0;
-      var fr = new FileReader();
-      fr.onerror = function(){ reject(fr.error || new Error("read error")); };
-      fr.onload = function(){
-        carry = parser.feed(concatBytes(carry, new Uint8Array(fr.result)));
-        var last = pos >= total;
-        var frac = total ? pos/total : 1;
-        pfill.style.width = (frac*100).toFixed(1) + "%";
-        ptxt.textContent = "Scanning messages… " + offsets.length.toLocaleString();
-        if(last) resolve();
-        else setTimeout(readNext, 0);
-      };
-      function readNext(){
-        var end = Math.min(pos + CHUNK, total);
-        var slice = file.slice(pos, end);
-        pos = end;
-        fr.readAsArrayBuffer(slice);
+      var grand = files.reduce(function(t, f){ return t + (f.size || 0); }, 0);
+      var done = 0, fi = 0;                         // bytes finished in prior files; current file index
+      function nextFile(){
+        if(fi >= files.length){ resolve(); return; }
+        var file = files[fi];
+        var carry = new Uint8Array(0), pos = 0, total = file.size || 0;
+        var fr = new FileReader();
+        fr.onerror = function(){ reject(fr.error || new Error("read error")); };
+        fr.onload = function(){
+          carry = parser.feed(concatBytes(carry, new Uint8Array(fr.result)));
+          var last = pos >= total;
+          var frac = grand ? (done + pos)/grand : 1;
+          pfill.style.width = (frac*100).toFixed(1) + "%";
+          ptxt.textContent = "Scanning messages… " + offsets.length.toLocaleString()
+            + (files.length > 1 ? "  (file "+(fi+1)+"/"+files.length+")" : "");
+          if(last){ done += total; fi++; setTimeout(nextFile, 0); }   // carry dropped at file end
+          else setTimeout(readChunk, 0);
+        };
+        function readChunk(){
+          var end = Math.min(pos + CHUNK, total);
+          var slice = file.slice(pos, end);
+          pos = end;
+          fr.readAsArrayBuffer(slice);
+        }
+        readChunk();
       }
-      readNext();
+      nextFile();
     });
+  }
+  function streamParseBinary(file){ return streamParseBinaryFiles([file]); }
+
+  // Read just the first message header of a .bin to learn its register address
+  // and first timestamp (for grouping + time-ordering) without reading the body.
+  function readHarpHeader(file){
+    return new Promise(function(resolve){
+      var fr = new FileReader();
+      fr.onerror = function(){ resolve({ file: file, ok: false }); };
+      fr.onload = function(){
+        var b = new Uint8Array(fr.result);
+        if(b.length < 12){ resolve({ file: file, ok: false }); return; }
+        var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+        var ptype = dv.getUint8(4), hasTs = (ptype & HARP_TS_MASK) !== 0;
+        var ok = harpDtype(ptype & ~HARP_TS_MASK) != null && hasTs;
+        var ts = hasTs ? (BigInt(dv.getUint32(5, true))*1000000000n + BigInt(dv.getUint16(9, true))*32000n) : null;
+        resolve({ file: file, address: dv.getUint8(2), firstTs: ts, size: file.size || 0, ok: ok });
+      };
+      fr.readAsArrayBuffer(file.slice(0, 64));
+    });
+  }
+
+  // Recursively collect File objects from dropped FileSystemEntry items (folders).
+  function entryToFiles(entry){
+    return new Promise(function(resolve){
+      if(entry.isFile){ entry.file(function(f){ resolve([f]); }, function(){ resolve([]); }); }
+      else if(entry.isDirectory){
+        var reader = entry.createReader(), all = [];
+        (function readBatch(){
+          reader.readEntries(function(batch){
+            if(!batch.length){
+              Promise.all(all.map(entryToFiles)).then(function(arrs){ resolve([].concat.apply([], arrs)); });
+            } else { all = all.concat(batch); readBatch(); }
+          }, function(){ resolve([]); });
+        })();
+      } else resolve([]);
+    });
+  }
+  function traverseEntries(entries){
+    return Promise.all(entries.map(entryToFiles)).then(function(arrs){ return [].concat.apply([], arrs); });
   }
 
   // Minimal device.yml reader: pulls just what's needed to label channels —
@@ -1939,30 +2000,111 @@ time
   function handleFiles(fileList){
     var files = Array.prototype.slice.call(fileList || []);
     if(!files.length) return;
-    var schemaFile = null, dataFile = null;
+    var schemaFiles = [], binFiles = [], otherFiles = [];
     files.forEach(function(f){
-      if(/\.ya?ml$/i.test(f.name)) schemaFile = f;
-      else dataFile = f;
+      var n = (f.name || "").toLowerCase();
+      if(/\.ya?ml$/.test(n)) schemaFiles.push(f);
+      else if(/\.(bin|harp|dat)$/.test(n)) binFiles.push(f);
+      else otherFiles.push(f);              // .csv/.txt/unknown — sniffed in handleFile
     });
-    if(schemaFile){
-      var fr = new FileReader();
-      fr.onload = function(){
-        harpSchema = parseHarpYaml(String(fr.result)) || harpSchema;
-        if(dataFile) handleFile(dataFile);
-        else if(loaded.style.display !== "none"){
-          $("fmeta").textContent += " · schema loaded";   // schema only: just note it
-        }
-      };
-      fr.onerror = function(){ if(dataFile) handleFile(dataFile); };
-      fr.readAsText(schemaFile);
-    } else if(dataFile){
-      handleFile(dataFile);
+    function proceed(){
+      if(binFiles.length) handleHarpBins(binFiles);
+      else if(otherFiles.length) handleFile(otherFiles[0]);   // CSV: one file (no concat)
+      else if(schemaFiles.length && loaded.style.display !== "none"){
+        $("fmeta").textContent += " · schema loaded";          // schema only: just note it
+      }
     }
+    if(schemaFiles.length){                  // parse the (last) device.yml first, keep it
+      var fr = new FileReader();
+      fr.onload = function(){ harpSchema = parseHarpYaml(String(fr.result)) || harpSchema; proceed(); };
+      fr.onerror = function(){ proceed(); };
+      fr.readAsText(schemaFiles[schemaFiles.length - 1]);
+    } else proceed();
+  }
+
+  // Pre-scan a set of .bin files, group by register address, and concatenate the
+  // largest register by default (a register selector lets the user switch).
+  function handleHarpBins(binFiles){
+    harpFiles = null; harpAddr = null;
+    note.style.display = "none"; results.style.display = "none";
+    drop.style.display = "none"; loaded.style.display = "none";
+    progress.style.display = "block"; pfill.style.width = "0%";
+    ptxt.textContent = "Scanning " + binFiles.length + " file(s)…";
+    setTimeout(function(){
+      Promise.all(binFiles.map(readHarpHeader)).then(function(infos){
+        infos = infos.filter(function(h){ return h.ok && h.firstTs !== null; });
+        if(!infos.length){
+          progress.style.display = "none"; drop.style.display = "block";
+          showError("No readable Harp messages with timestamps in the selected file(s).");
+          return;
+        }
+        var byAddr = {};
+        infos.forEach(function(h){ (byAddr[h.address] = byAddr[h.address] || []).push(h); });
+        var addresses = Object.keys(byAddr).map(Number).sort(function(a, b){ return a - b; });
+        var best = addresses[0], bestSize = -1;          // default: register with most data
+        addresses.forEach(function(a){
+          var s = byAddr[a].reduce(function(t, h){ return t + h.size; }, 0);
+          if(s > bestSize){ bestSize = s; best = a; }
+        });
+        harpFiles = { byAddr: byAddr, addresses: addresses };
+        loadHarpRegister(best);
+      });
+    }, 0);
+  }
+
+  // Concatenate every file for one register address, in timestamp order, through
+  // a single parser → one continuous timeline, then finish the load.
+  function loadHarpRegister(addr){
+    harpAddr = addr;
+    var group = harpFiles.byAddr[addr].slice().sort(function(a, b){
+      return a.firstTs < b.firstTs ? -1 : a.firstTs > b.firstTs ? 1 : 0;
+    });
+    var files = group.map(function(h){ return h.file; });
+    var totalBytes = group.reduce(function(t, h){ return t + h.size; }, 0);
+    var regName = (harpSchema && harpSchema[addr] && harpSchema[addr].name) || ("reg " + addr);
+    var loadStart = performance.now();
+    note.style.display = "none"; results.style.display = "none";
+    drop.style.display = "none"; loaded.style.display = "none";
+    progress.style.display = "block"; pfill.style.width = "0%";
+    ptxt.textContent = "Reading " + files.length + " file(s)…";
+    resetData();
+    streamParseBinaryFiles(files).then(function(){
+      if(offsets.length < 2){
+        progress.style.display = "none"; drop.style.display = "block";
+        showError("Found " + offsets.length + " timestamped message(s) for " + regName + ".");
+        return;
+      }
+      var label = files.length > 1 ? (regName + " — " + files.length + " files") : files[0].name;
+      var extra = files.length > 1 ? (" · " + files.length + " files combined") : "";
+      finishLoad(label, totalBytes, loadStart, extra);
+    }).catch(function(){
+      progress.style.display = "none"; drop.style.display = "block";
+      showError("Could not read the selected file(s).");
+    });
+  }
+
+  // Populate/show the register selector when a multi-register set is loaded.
+  function refreshRegSelector(){
+    var sel = $("regsel");
+    if(!harpFiles || harpFiles.addresses.length < 2){ sel.style.display = "none"; sel.innerHTML = ""; return; }
+    sel.innerHTML = "";
+    harpFiles.addresses.forEach(function(a){
+      var nm = (harpSchema && harpSchema[a] && harpSchema[a].name) || ("reg " + a);
+      var nf = harpFiles.byAddr[a].length;
+      var opt = document.createElement("option");
+      opt.value = a;
+      opt.textContent = nm + " (addr " + a + (nf > 1 ? ", " + nf + " files" : "") + ")";
+      if(a === harpAddr) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.style.display = "";
   }
 
   // Shared post-parse step for both CSV and Harp loads: build the overview,
-  // detect Δt and time mode, fill the meta line, and render.
-  function finishLoad(file, loadStart){
+  // detect Δt and time mode, fill the meta line, and render. displayName/sizeBytes
+  // describe the load (a single file, or a combined register); extra is appended
+  // to the meta line (e.g. a combined-file count).
+  function finishLoad(displayName, sizeBytes, loadStart, extra){
     ptxt.textContent = "Building overview…";
     pfill.style.width = "100%";
     setTimeout(function(){
@@ -1985,9 +2127,10 @@ time
 
       var loadMs = performance.now() - loadStart;
       var loadStr = loadMs >= 1000 ? (loadMs/1000).toFixed(2)+" s" : Math.round(loadMs)+" ms";
-      $("fname").textContent = file.name;
-      $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)
-        + (harpInfo ? " · "+harpInfo : "") + " · loaded in "+loadStr;
+      $("fname").textContent = displayName;
+      $("fmeta").textContent = (sizeBytes/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)
+        + (harpInfo ? " · "+harpInfo : "") + (extra || "") + " · loaded in "+loadStr;
+      refreshRegSelector();
       loaded.style.display = "flex";
       applyBtn.disabled = false;
       autoBtn.disabled = false;
@@ -1996,6 +2139,7 @@ time
   }
 
   function handleFile(file){
+    harpFiles = null; harpAddr = null;        // single/CSV load: no register set
     note.style.display = "none";
     results.style.display = "none";
     drop.style.display = "none";
@@ -2017,7 +2161,7 @@ time
             : "Found "+offsets.length+" timestamped row(s). Expecting a CSV with a time column like 2026-06-09 22:20:33.475999832+00:00 in the first field.");
           return;
         }
-        finishLoad(file, loadStart);
+        finishLoad(file.name, file.size, loadStart);
       }).catch(function(){
         progress.style.display = "none"; drop.style.display = "block";
         showError("Could not read that file.");
@@ -2026,26 +2170,47 @@ time
   }
 
   // drag/drop + click
+  var dirInput = $("dir");
   drop.addEventListener("click", function(){ fileInput.click(); });
   fileInput.addEventListener("change", function(){ if(fileInput.files.length) handleFiles(fileInput.files); });
+  dirInput.addEventListener("change", function(){ if(dirInput.files.length) handleFiles(dirInput.files); });
+  $("pickfolder").addEventListener("click", function(ev){
+    ev.stopPropagation();                 // don't trigger the drop-zone's file picker
+    dirInput.value = "";
+    dirInput.click();
+  });
   ["dragenter","dragover"].forEach(function(e){
     drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.add("over"); });
   });
   ["dragleave","drop"].forEach(function(e){
     drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.remove("over"); });
   });
-  drop.addEventListener("drop", function(ev){
-    if(ev.dataTransfer.files.length) handleFiles(ev.dataTransfer.files);
-  });
+  // Resolve a drop into File objects, descending into any dropped folders. Folder
+  // entries must be read from dataTransfer.items synchronously (it empties after
+  // the handler returns), so grab the entries here, then traverse async.
+  function dispatchDrop(ev){
+    var dt = ev.dataTransfer, entries = [];
+    if(dt.items && dt.items.length && dt.items[0].webkitGetAsEntry){
+      for(var i=0;i<dt.items.length;i++){ var e = dt.items[i].webkitGetAsEntry(); if(e) entries.push(e); }
+    }
+    if(entries.some(function(e){ return e.isDirectory; })){
+      traverseEntries(entries).then(function(fs){ if(fs.length) handleFiles(fs); });
+    } else if(dt.files.length){ handleFiles(dt.files); }
+  }
+  drop.addEventListener("drop", function(ev){ dispatchDrop(ev); });
   // allow dropping anywhere once loaded
   window.addEventListener("dragover", function(e){ e.preventDefault(); });
   window.addEventListener("drop", function(e){
     e.preventDefault();
-    if(loaded.style.display !== "none" && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+    if(loaded.style.display !== "none") dispatchDrop(e);
   });
   $("reload").addEventListener("click", function(){
     fileInput.value = "";
     fileInput.click();
+  });
+  // switch which Harp register is concatenated/analyzed
+  $("regsel").addEventListener("change", function(){
+    if(harpFiles) loadHarpRegister(+this.value);
   });
 
   // apply settings
