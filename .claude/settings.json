@@ -17,7 +17,9 @@
       "Bash(cat *)",
       "Bash(ls *)",
       "Bash(wc *)",
-      "Bash(tail *)"      
+      "Bash(tail *)",
+      "WebFetch(domain:harp-tech.org)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [
       "Bash(rm -rf *)"

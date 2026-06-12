@@ -268,9 +268,9 @@
 
   <!-- drop zone -->
   <div class="drop" id="drop">
-    <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" style="display:none">
+    <input type="file" id="file" accept=".csv,.txt,.bin,.harp,.yml,.yaml,text/csv,text/plain" multiple style="display:none">
     <p class="big">Drop your capture here</p>
-    <p class="small">or click to browse — CSV stays on your machine, nothing is uploaded</p>
+    <p class="small">or click to browse — CSV or Harp <code>.bin</code> (drop a <code>device.yml</code> with it for names). Stays on your machine, nothing is uploaded.</p>
     <div class="fmt">time,analog_input0,encoder,analog_input1
 2026-06-09 22:20:33.475999832+00:00,7,0,7
 2026-06-09 22:20:33.476992130+00:00,7,0,8
@@ -404,6 +404,14 @@ time
   var chMin = [], chMax = []; // per-channel global value range
   var showRaw = false, showAnom = true, showTs = false;  // view-layer toggles
   var malformed = 0, outOfOrder = 0, duplicates = 0;
+  // Harp binary support: a parsed device.yml schema (address -> {name, members})
+  // kept across loads so one schema labels successive per-register .bin files,
+  // plus a short description of the most recent binary load for the meta line.
+  var harpSchema = null, harpInfo = "";
+  // Harp time is seconds since 1904-01-01; Unix epoch is 1970-01-01, which is
+  // later by 2082844800 s. Subtracting this offset (in ns) from a clock-synced
+  // Harp timestamp gives Unix-epoch ns so absolute/wall-clock mode reads right.
+  var HARP_EPOCH_OFFSET_NS = 2082844800000000000n;
   var intervalNs = 1e6;      // nominal Δt
   var detectedNs = 1e6;
   var tolerance = 1.5;
@@ -468,6 +476,7 @@ time
     firstNs = 0n; offsets = []; gaps = [];
     channels = []; channelNames = []; channelCount = 0; chMin = []; chMax = [];
     malformed = 0; outOfOrder = 0; duplicates = 0;
+    harpInfo = "";                // description of the binary load (set by the Harp parser)
     viewStart = 0; viewEnd = 0;   // force full-extent view for the new capture
     heatEpoch++; heatCache = null;   // invalidate the cached heatmap columns
     pyramid = null;                  // drop the old LOD pyramid
@@ -554,6 +563,239 @@ time
         fr.readAsArrayBuffer(slice);
       }
       readNext();
+    });
+  }
+
+  // ---------- Harp binary format ----------
+  // A Harp data file is a flat stream of fixed-stride messages (one per register
+  // event). Layout: [Type, Length, Address, Port, PayloadType, (Timestamp), Payload…, Checksum].
+  //   stride       = Length + 2 (Length counts every byte after itself)
+  //   PayloadType  = dtype code, with bit 0x10 set when a timestamp is present
+  //   Timestamp    = uint32 seconds + uint16 micro-ticks (32 µs each), since 1904
+  // A single .bin holds one register, so the stride/type are taken from the first
+  // message and the rest are walked at that fixed stride (as harp-python does).
+  var HARP_TS_MASK = 0x10;
+  function harpDtype(code){
+    switch(code){
+      case 1:   return { size:1, name:"U8",    read:function(v,o){ return v.getUint8(o); } };
+      case 2:   return { size:2, name:"U16",   read:function(v,o){ return v.getUint16(o,true); } };
+      case 4:   return { size:4, name:"U32",   read:function(v,o){ return v.getUint32(o,true); } };
+      case 8:   return { size:8, name:"U64",   read:function(v,o){ return Number(v.getBigUint64(o,true)); } };
+      case 129: return { size:1, name:"S8",    read:function(v,o){ return v.getInt8(o); } };
+      case 130: return { size:2, name:"S16",   read:function(v,o){ return v.getInt16(o,true); } };
+      case 132: return { size:4, name:"S32",   read:function(v,o){ return v.getInt32(o,true); } };
+      case 136: return { size:8, name:"S64",   read:function(v,o){ return Number(v.getBigInt64(o,true)); } };
+      case 68:  return { size:4, name:"Float", read:function(v,o){ return v.getFloat32(o,true); } };
+      default:  return null;
+    }
+  }
+
+  // Concatenate two Uint8Arrays (used to carry a partial trailing message across
+  // chunk boundaries; the carry is always < one stride, so this stays cheap).
+  function concatBytes(a, b){
+    if(!a.length) return b;
+    if(!b.length) return a;
+    var out = new Uint8Array(a.length + b.length);
+    out.set(a, 0); out.set(b, a.length);
+    return out;
+  }
+
+  // Stateful per-message parser. Mirrors makeLineParser: fills the same globals
+  // (firstNs, offsets, gaps, channels, counters) so everything downstream is
+  // format-agnostic. Layout (stride, dtype, channel count, names) is locked in
+  // from the first message; later messages are read at the resolved offsets.
+  function makeHarpParser(){
+    var inited = false, prev = null;
+    var stride = 0, hasTs = false, dt = null, nEl = 0, dataOff = 0, epochAdd = 0n;
+    function init(view, base){
+      var len = view.getUint8(base+1);
+      stride = len + 2;
+      var ptype = view.getUint8(base+4);
+      hasTs = (ptype & HARP_TS_MASK) !== 0;
+      dt = harpDtype(ptype & ~HARP_TS_MASK);
+      if(!dt) return false;                       // unknown payload type
+      if(stride < (hasTs ? 12 : 6)) return false; // impossibly short message → not Harp
+      dataOff = hasTs ? 11 : 5;                    // 5 header + 6 timestamp bytes
+      var dataBytes = stride - dataOff - 1;        // minus trailing checksum
+      nEl = dataBytes > 0 ? Math.floor(dataBytes / dt.size) : 0;
+      var addr = view.getUint8(base+2);
+      // first timestamp decides absolute vs relative: a Harp time past ~1999
+      // (synced clock) gets shifted to the Unix epoch for wall-clock display;
+      // small boot-relative times stay as-is and read as elapsed seconds.
+      var sec0 = hasTs ? view.getUint32(base+5, true) : 0;
+      epochAdd = (hasTs && sec0 > 3000000000) ? -HARP_EPOCH_OFFSET_NS : 0n;
+      // resolve channel names from the device.yml schema when available
+      channelCount = nEl;
+      var reg = harpSchema ? harpSchema[addr] : null;
+      for(var ci=0; ci<nEl; ci++){
+        channels[ci] = []; chMin[ci] = Infinity; chMax[ci] = -Infinity;
+        var nm = reg && reg.members && reg.members[ci];
+        channelNames[ci] = nm || ((reg && reg.name ? reg.name : ("reg"+addr)) + (nEl>1 ? ("_"+ci) : ""));
+      }
+      harpInfo = "Harp " + (reg && reg.name ? '"'+reg.name+'"' : "reg "+addr)
+               + " · " + dt.name + (nEl>1 ? ("×"+nEl) : "") + (hasTs ? "" : " (no timestamps)");
+      inited = true;
+      return true;
+    }
+    // feed one chunk; returns leftover bytes (< stride) to carry to the next
+    function feed(buf){
+      var view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+      var i = 0, n = buf.length;
+      if(!inited){
+        if(n < 11) return buf;                     // need a full header first
+        if(!init(view, 0)){ malformed++; return new Uint8Array(0); }  // give up gracefully
+      }
+      for(; i + stride <= n; i += stride){
+        if(!hasTs) continue;                        // can't place an untimed message
+        var sec = view.getUint32(i+5, true);
+        var micro = view.getUint16(i+9, true);
+        var tsNs = BigInt(sec)*1000000000n + BigInt(micro)*32000n + epochAdd;
+        if(prev === null && offsets.length === 0) firstNs = tsNs;
+        var off = Number(tsNs - firstNs);
+        if(prev !== null){
+          var g = off - prev;
+          if(g < 0){ outOfOrder++; }
+          else if(g === 0){ duplicates++; }
+          gaps.push(g);
+        }
+        offsets.push(off);
+        for(var k=0; k<nEl; k++){
+          var v = dt.read(view, i + dataOff + k*dt.size);
+          channels[k].push(v);
+          if(v === v){ if(v < chMin[k]) chMin[k] = v; if(v > chMax[k]) chMax[k] = v; }
+        }
+        prev = off;
+      }
+      return i < n ? buf.slice(i) : new Uint8Array(0);
+    }
+    return { feed: feed };
+  }
+
+  // Stream a Harp .bin in byte chunks (same chunked reader as streamParse), but
+  // walk fixed-stride binary messages instead of decoding text lines.
+  function streamParseBinary(file){
+    return new Promise(function(resolve, reject){
+      var chunkMB = parseFloat($("chunk").value);
+      if(!(chunkMB > 0)) chunkMB = 8;
+      var CHUNK = Math.round(chunkMB * 1024 * 1024);
+      var parser = makeHarpParser();
+      var carry = new Uint8Array(0);
+      var pos = 0, total = file.size || 0;
+      var fr = new FileReader();
+      fr.onerror = function(){ reject(fr.error || new Error("read error")); };
+      fr.onload = function(){
+        carry = parser.feed(concatBytes(carry, new Uint8Array(fr.result)));
+        var last = pos >= total;
+        var frac = total ? pos/total : 1;
+        pfill.style.width = (frac*100).toFixed(1) + "%";
+        ptxt.textContent = "Scanning messages… " + offsets.length.toLocaleString();
+        if(last) resolve();
+        else setTimeout(readNext, 0);
+      };
+      function readNext(){
+        var end = Math.min(pos + CHUNK, total);
+        var slice = file.slice(pos, end);
+        pos = end;
+        fr.readAsArrayBuffer(slice);
+      }
+      readNext();
+    });
+  }
+
+  // Minimal device.yml reader: pulls just what's needed to label channels —
+  // each register's name (the map key) by address, and any payloadSpec member
+  // names ordered by offset. Indentation-based and tolerant; handles the YAML
+  // anchors (`Name: &foo`) and merge keys (`<<: *foo`) real Harp schemas use,
+  // so a register that inherits another's payloadSpec gets the same names.
+  // Best-effort: anything it can't resolve falls back to generic reg<addr>_<i>.
+  function parseHarpYaml(text){
+    var lines = text.split(/\r?\n/);
+    function indentOf(s){ var m = /^( *)/.exec(s); return m[1].length; }
+    var anchors = {};                // anchorName -> register object
+    var regList = [];                // every register, in document order
+    var byAddress = {};
+    var regBase = -1, inRegisters = false;
+    var cur = null, curIndent = -1;
+    var inSpec = false, memberIndent = -1, curMember = null;
+    for(var li=0; li<lines.length; li++){
+      var line = lines[li].replace(/\s+#.*$/, "");   // strip trailing comments
+      if(!line.trim()) continue;
+      var ind = indentOf(line);
+      var t = line.trim();
+      if(!inRegisters){ if(/^registers:\s*$/.test(t)) inRegisters = true; continue; }
+      if(regBase === -1) regBase = ind;              // first child sets the level
+      if(ind < regBase) break;                       // left the registers block
+      var kv = /^("?[^:"]+"?):\s*(.*)$/.exec(t);
+      if(!kv) continue;
+      var key = kv[1].replace(/^"|"$/g, "").trim(), val = kv[2].trim();
+
+      if(ind === regBase){                            // a new register (maybe with &anchor)
+        cur = { name: key, byOffset: [], mergeFrom: null, address: null };
+        regList.push(cur);
+        var am = /^&(\S+)/.exec(val);
+        if(am) anchors[am[1]] = cur;
+        curIndent = -1; inSpec = false; curMember = null;
+        continue;
+      }
+      if(!cur) continue;
+      if(curIndent === -1) curIndent = ind;
+      if(inSpec){
+        if(ind <= curIndent){ inSpec = false; }       // payloadSpec ended → fall through
+        else {
+          if(memberIndent === -1) memberIndent = ind;
+          if(ind === memberIndent){                    // a member name
+            curMember = { name: key, offset: cur.byOffset.length };
+            cur.byOffset.push(curMember);
+          } else if(ind > memberIndent && curMember){   // a member property (offset)
+            var om = /^offset:\s*(\d+)/.exec(t);
+            if(om) curMember.offset = +om[1];
+          }
+          continue;
+        }
+      }
+      if(ind === curIndent){
+        if(key === "address"){ var a = parseInt(val, 10); if(!isNaN(a)){ cur.address = a; byAddress[a] = cur; } }
+        else if(key === "payloadSpec"){ inSpec = true; memberIndent = -1; curMember = null; }
+        else if(key === "<<"){ var rm = /^\*(\S+)/.exec(val); if(rm) cur.mergeFrom = rm[1]; }
+      }
+    }
+    // resolve member names: a register's own payloadSpec wins; otherwise inherit
+    // from the register it merges (`<<: *anchor`). Memoized + cycle-guarded.
+    function members(reg, seen){
+      if(reg._members) return reg._members;
+      seen = seen || {};
+      if(!reg.byOffset.length && reg.mergeFrom && anchors[reg.mergeFrom] && !seen[reg.mergeFrom]){
+        seen[reg.mergeFrom] = true;
+        reg._members = members(anchors[reg.mergeFrom], seen);
+        return reg._members;
+      }
+      var ms = reg.byOffset.slice().sort(function(a,b){ return a.offset-b.offset; });
+      reg._members = ms.map(function(m){ return m.name; });
+      return reg._members;
+    }
+    var out = {};
+    regList.forEach(function(reg){
+      if(reg.address == null) return;
+      out[reg.address] = { name: reg.name, members: members(reg) };
+    });
+    return Object.keys(out).length ? out : null;
+  }
+
+  // Decide whether a file is a Harp binary: trust .bin/.harp extensions, treat
+  // .csv/.txt as text, otherwise sniff — a binary file is mostly non-printable.
+  function detectBinary(file){
+    return new Promise(function(resolve){
+      var name = (file.name || "").toLowerCase();
+      if(/\.(bin|harp|dat)$/.test(name)) return resolve(true);
+      if(/\.(csv|txt|tsv|log)$/.test(name)) return resolve(false);
+      var fr = new FileReader();
+      fr.onerror = function(){ resolve(false); };
+      fr.onload = function(){
+        var b = new Uint8Array(fr.result), printable = 0;
+        for(var i=0;i<b.length;i++){ var c=b[i]; if(c===9||c===10||c===13||(c>=32&&c<127)) printable++; }
+        resolve(b.length ? printable/b.length < 0.85 : false);
+      };
+      fr.readAsArrayBuffer(file.slice(0, 256));
     });
   }
 
@@ -1692,6 +1934,67 @@ time
     applyBtn.disabled = true;
   }
 
+  // Entry point for one or more dropped/selected files: a CSV/Harp data file
+  // plus an optional device.yml schema (kept for labeling subsequent .bin loads).
+  function handleFiles(fileList){
+    var files = Array.prototype.slice.call(fileList || []);
+    if(!files.length) return;
+    var schemaFile = null, dataFile = null;
+    files.forEach(function(f){
+      if(/\.ya?ml$/i.test(f.name)) schemaFile = f;
+      else dataFile = f;
+    });
+    if(schemaFile){
+      var fr = new FileReader();
+      fr.onload = function(){
+        harpSchema = parseHarpYaml(String(fr.result)) || harpSchema;
+        if(dataFile) handleFile(dataFile);
+        else if(loaded.style.display !== "none"){
+          $("fmeta").textContent += " · schema loaded";   // schema only: just note it
+        }
+      };
+      fr.onerror = function(){ if(dataFile) handleFile(dataFile); };
+      fr.readAsText(schemaFile);
+    } else if(dataFile){
+      handleFile(dataFile);
+    }
+  }
+
+  // Shared post-parse step for both CSV and Harp loads: build the overview,
+  // detect Δt and time mode, fill the meta line, and render.
+  function finishLoad(file, loadStart){
+    ptxt.textContent = "Building overview…";
+    pfill.style.width = "100%";
+    setTimeout(function(){
+      buildPyramid();
+      progress.style.display = "none";
+      // auto-detect interval from median gap (unless user pinned one already)
+      detectedNs = median(gaps);
+      // epoch/wall-clock vs relative elapsed seconds: a first sample beyond
+      // ~1973 in epoch terms is treated as an absolute timestamp.
+      isAbsolute = firstNs > 100000000000000000n;
+      if(!intervalIn.value || intervalIn.dataset.auto !== "no"){
+        intervalNs = detectedNs;
+        intervalIn.dataset.auto = "yes";
+      } else {
+        intervalNs = parseFloat(intervalIn.value)*1e6 || detectedNs;
+      }
+      tolerance = parseFloat(tolIn.value) || 1.5;
+      var cv0 = parseFloat(closeIn.value);
+      if(cv0 >= 0) closeNs = cv0*1e3;
+
+      var loadMs = performance.now() - loadStart;
+      var loadStr = loadMs >= 1000 ? (loadMs/1000).toFixed(2)+" s" : Math.round(loadMs)+" ms";
+      $("fname").textContent = file.name;
+      $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)
+        + (harpInfo ? " · "+harpInfo : "") + " · loaded in "+loadStr;
+      loaded.style.display = "flex";
+      applyBtn.disabled = false;
+      autoBtn.disabled = false;
+      render();
+    }, 0);
+  }
+
   function handleFile(file){
     note.style.display = "none";
     results.style.display = "none";
@@ -1703,55 +2006,28 @@ time
     var loadStart = performance.now();
 
     resetData();
-    setTimeout(function(){
-        streamParse(file).then(function(){
-          if(offsets.length < 2){
-            progress.style.display = "none";
-            drop.style.display = "block";
-            showError("Found "+offsets.length+" timestamped row(s). Expecting a CSV with a time column like 2026-06-09 22:20:33.475999832+00:00 in the first field.");
-            return;
-          }
-          // build the multi-resolution overview (heavy, O(N)) after letting the
-          // progress message paint
-          ptxt.textContent = "Building overview…";
-          pfill.style.width = "100%";
-          setTimeout(function(){
-            buildPyramid();
-            progress.style.display = "none";
-            // auto-detect interval from median gap (unless user pinned one already)
-            detectedNs = median(gaps);
-            // epoch/wall-clock vs relative elapsed seconds: a first sample beyond
-            // ~1973 in epoch terms is treated as an absolute timestamp.
-            isAbsolute = firstNs > 100000000000000000n;
-            if(!intervalIn.value || intervalIn.dataset.auto !== "no"){
-              intervalNs = detectedNs;
-              intervalIn.dataset.auto = "yes";
-            } else {
-              intervalNs = parseFloat(intervalIn.value)*1e6 || detectedNs;
-            }
-            tolerance = parseFloat(tolIn.value) || 1.5;
-            var cv0 = parseFloat(closeIn.value);
-            if(cv0 >= 0) closeNs = cv0*1e3;
-
-            var loadMs = performance.now() - loadStart;
-            var loadStr = loadMs >= 1000 ? (loadMs/1000).toFixed(2)+" s" : Math.round(loadMs)+" ms";
-            $("fname").textContent = file.name;
-            $("fmeta").textContent = (file.size/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)+" · loaded in "+loadStr;
-            loaded.style.display = "flex";
-            applyBtn.disabled = false;
-            autoBtn.disabled = false;
-            render();
-          }, 0);
-        }).catch(function(){
-          progress.style.display = "none"; drop.style.display = "block";
-          showError("Could not read that file.");
-        });
-    }, 0);
+    detectBinary(file).then(function(isBinary){
+      var parse = isBinary ? streamParseBinary(file) : streamParse(file);
+      parse.then(function(){
+        if(offsets.length < 2){
+          progress.style.display = "none";
+          drop.style.display = "block";
+          showError(isBinary
+            ? "Found "+offsets.length+" timestamped message(s). Expecting a Harp .bin: a stream of fixed-stride register messages with timestamps."
+            : "Found "+offsets.length+" timestamped row(s). Expecting a CSV with a time column like 2026-06-09 22:20:33.475999832+00:00 in the first field.");
+          return;
+        }
+        finishLoad(file, loadStart);
+      }).catch(function(){
+        progress.style.display = "none"; drop.style.display = "block";
+        showError("Could not read that file.");
+      });
+    });
   }
 
   // drag/drop + click
   drop.addEventListener("click", function(){ fileInput.click(); });
-  fileInput.addEventListener("change", function(){ if(fileInput.files[0]) handleFile(fileInput.files[0]); });
+  fileInput.addEventListener("change", function(){ if(fileInput.files.length) handleFiles(fileInput.files); });
   ["dragenter","dragover"].forEach(function(e){
     drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.add("over"); });
   });
@@ -1759,13 +2035,13 @@ time
     drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.remove("over"); });
   });
   drop.addEventListener("drop", function(ev){
-    var f = ev.dataTransfer.files[0]; if(f) handleFile(f);
+    if(ev.dataTransfer.files.length) handleFiles(ev.dataTransfer.files);
   });
   // allow dropping anywhere once loaded
   window.addEventListener("dragover", function(e){ e.preventDefault(); });
   window.addEventListener("drop", function(e){
     e.preventDefault();
-    if(loaded.style.display !== "none" && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    if(loaded.style.display !== "none" && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
   });
   $("reload").addEventListener("click", function(){
     fileInput.value = "";
