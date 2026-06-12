@@ -922,8 +922,15 @@ time
     var s = ns/1e9;
     if(s < 1) return (ns/1e6).toFixed(1) + " ms";
     if(s < 60) return s.toFixed(2) + " s";
-    var m = Math.floor(s/60), r = s - m*60;
-    return m + "m " + r.toFixed(1) + "s";
+    if(s < 3600){                                  // under an hour: m + fractional s
+      var m = Math.floor(s/60), r = s - m*60;
+      return m + "m " + r.toFixed(1) + "s";
+    }
+    var total = Math.floor(s);                     // an hour or more: whole-unit breakdown
+    var d = Math.floor(total/86400), h = Math.floor((total%86400)/3600),
+        mm = Math.floor((total%3600)/60), ss = total%60;
+    if(d > 0) return d + "d " + h + "h " + mm + "m";
+    return h + "h " + mm + "m " + ss + "s";
   }
   function pad(x,n){ return String(x).padStart(n,"0"); }
   function absClock(offNs){
@@ -2171,7 +2178,13 @@ time
 
   // drag/drop + click
   var dirInput = $("dir");
-  drop.addEventListener("click", function(){ fileInput.click(); });
+  drop.addEventListener("click", function(ev){
+    // ignore the synthetic clicks that fileInput/dirInput.click() bubble back up
+    // (they're children of #drop), and clicks on the "pick a folder" link — else
+    // opening the folder picker would also pop the file picker.
+    if(ev.target === fileInput || ev.target === dirInput || ev.target.id === "pickfolder") return;
+    fileInput.click();
+  });
   fileInput.addEventListener("change", function(){ if(fileInput.files.length) handleFiles(fileInput.files); });
   dirInput.addEventListener("change", function(){ if(dirInput.files.length) handleFiles(dirInput.files); });
   $("pickfolder").addEventListener("click", function(ev){
@@ -2194,15 +2207,27 @@ time
       for(var i=0;i<dt.items.length;i++){ var e = dt.items[i].webkitGetAsEntry(); if(e) entries.push(e); }
     }
     if(entries.some(function(e){ return e.isDirectory; })){
-      traverseEntries(entries).then(function(fs){ if(fs.length) handleFiles(fs); });
-    } else if(dt.files.length){ handleFiles(dt.files); }
+      traverseEntries(entries).then(function(fs){
+        if(fs.length) handleFiles(fs);
+        else showError("Couldn't read the folder's contents — folder drag-drop is blocked when the page is opened from disk (file://). Use the “pick a folder” button, or serve the page over http://localhost to drag folders.");
+      });
+    } else if(dt.files && dt.files.length){
+      handleFiles(dt.files);
+    } else {
+      // a folder drop whose browser gave us no entries and no files (some
+      // browsers don't expose folders on drop) — point the user at the picker.
+      showError("Nothing readable was dropped. Drop CSV or Harp .bin files, or use the “pick a folder” button for a folder.");
+    }
   }
-  drop.addEventListener("drop", function(ev){ dispatchDrop(ev); });
-  // allow dropping anywhere once loaded
-  window.addEventListener("dragover", function(e){ e.preventDefault(); });
+  // The whole window is a drop target (before and after a capture loads), so a
+  // drop landing in the margin around the box still works. Handled once, here.
+  window.addEventListener("dragover", function(e){
+    e.preventDefault();
+    if(e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  });
   window.addEventListener("drop", function(e){
     e.preventDefault();
-    if(loaded.style.display !== "none") dispatchDrop(e);
+    dispatchDrop(e);
   });
   $("reload").addEventListener("click", function(){
     fileInput.value = "";

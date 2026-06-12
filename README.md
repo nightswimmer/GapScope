@@ -55,6 +55,8 @@ Supported timestamp forms: `YYYY-MM-DD HH:MM:SS[.fraction][±HH:MM | Z]` (space 
 
 You can also load **multiple `.bin` files at once** — drag several, or pick/drop a whole folder. Files are grouped by register and the files of each register are concatenated in timestamp order into one continuous timeline; if more than one register is present, a selector chooses which to analyze. (Each loaded view concatenates a single register; merging different registers onto one timeline is not done.)
 
+> **Loading a folder:** use the **"pick a folder"** button, which works regardless of how the page is opened. Folder *drag-and-drop* only works when the page is served over `http://` (e.g. `python -m http.server`); browsers block reading a dropped folder's contents on `file://` pages opened directly from disk. Dragging individual files always works.
+
 ## How it works
 
 The entire tool is contained in [index.html](index.html) — HTML, CSS, and vanilla JavaScript with no dependencies. The capture is **streamed in byte-sized chunks** (decoded with a streaming `TextDecoder` that stitches lines across chunk boundaries) and parsed incrementally, which keeps the UI responsive and removes the single-string size ceiling on large files. Timestamps are converted to nanosecond offsets from the first sample, and gaps between consecutive samples drive the anomaly detection.
