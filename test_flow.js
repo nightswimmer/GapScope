@@ -10,7 +10,7 @@ function makeEl(){
     style: {}, dataset: {}, textContent: "", innerHTML: "", value: "",
     checked: false, disabled: false, width: 100, height: 100,
     clientWidth: 100, clientHeight: 100, offsetWidth: 100,
-    classList: { add(){}, remove(){} },
+    classList: { add(){}, remove(){}, toggle(){} },
     addEventListener(){}, appendChild(){}, click(){},
     getBoundingClientRect(){ return { left: 0, top: 0, width: 100, height: 100 }; },
     getContext(){ return new Proxy({}, { get: () => () => {} }); },

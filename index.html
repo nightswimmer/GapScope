@@ -42,8 +42,8 @@
   .wrap{margin:0 auto;padding:28px 12px 80px}
 
   /* nameplate */
-  .head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
-  .brand{display:flex;align-items:center;gap:14px}
+  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+  .brand{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   .brand .mark{
     width:38px;height:38px;border:1px solid var(--line-bright);border-radius:7px;
     display:grid;place-items:center;background:var(--panel-2);position:relative;overflow:hidden;
@@ -55,30 +55,30 @@
   }
   .brand .sub{font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--text-faint);text-transform:uppercase;margin-top:2px}
 
-  /* controls */
-  .controls{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
-  .ctl{display:flex;flex-direction:column;gap:5px}
-  .ctl label{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-faint)}
-  .ctl .row{display:flex;align-items:center;gap:6px}
+  /* header nav buttons (load / back), right of the app name */
+  .hdr-nav{display:flex;align-items:center;gap:8px;margin-left:8px}
+  .hdrbtn{background:var(--panel-2);border:1px solid var(--line-bright);color:var(--accent);
+    font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;
+    transition:border-color .15s,color .15s,background .15s}
+  .hdrbtn:hover{border-color:var(--accent);background:var(--panel)}
+
+  /* controls — all on one line: label before each value, unit/extras after */
+  .controls{display:flex;flex-direction:row;align-items:center;gap:18px;flex-wrap:wrap}
+  .ctl{display:flex;flex-direction:row;align-items:center;gap:8px}
+  .ctl label{flex:none;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-faint)}
   .ctl input{
-    width:104px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
-    font-family:var(--mono);font-size:14px;padding:8px 10px;border-radius:6px;outline:none;
+    width:92px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    font-family:var(--mono);font-size:14px;padding:7px 9px;border-radius:6px;outline:none;
   }
   .ctl input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,168,255,.18)}
   .ctl select{
-    width:128px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
-    font-family:var(--mono);font-size:13px;padding:8px 10px;border-radius:6px;outline:none;cursor:pointer;
+    width:120px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    font-family:var(--mono);font-size:13px;padding:7px 9px;border-radius:6px;outline:none;cursor:pointer;
   }
   .ctl select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,168,255,.18)}
+  .ctl .unit{font-family:var(--mono);font-size:11px;color:var(--text-faint);letter-spacing:.04em}
   .ctl .auto-class{font-family:var(--mono);font-size:10px;color:var(--text-faint);letter-spacing:.04em}
   .ctl .auto-class b{color:var(--text-dim);font-weight:600}
-  button.apply{
-    background:var(--phosphor-dim);border:1px solid rgba(52,224,196,.4);color:var(--phosphor);
-    font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
-    padding:9px 16px;border-radius:6px;cursor:pointer;height:37px;transition:background .15s,border-color .15s;
-  }
-  button.apply:hover{background:rgba(52,224,196,.22);border-color:var(--phosphor)}
-  button.apply:disabled{opacity:.35;cursor:not-allowed}
   button.ghost{
     background:var(--panel-2);border:1px solid var(--line);color:var(--text-dim);
     font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
@@ -181,6 +181,46 @@
   .devcard td:first-child{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
   .devcard td.drops{color:var(--drop)}
   .devcard td.ok{color:var(--phosphor)}
+  /* array-register value sub-rows + chart-selection highlight */
+  .devcard tbody tr.subrow td{padding-top:3px;padding-bottom:3px;color:var(--text-faint);font-size:11px}
+  .devcard tbody tr.subrow td:first-child{padding-left:22px;color:var(--text-dim)}
+  .devcard tbody tr.subrow .pos{color:var(--text-faint)}
+  .devcard .caret{display:inline-block;width:20px;text-align:center;color:var(--text-dim);cursor:pointer;
+    font-size:15px;line-height:1;vertical-align:middle;user-select:none}
+  .devcard tbody tr:hover .caret{color:var(--accent)}
+  .devcard .vcount{color:var(--text-faint);font-size:10px;background:var(--bg-grid);border-radius:8px;padding:0 6px;margin-left:4px}
+  .devcard tbody tr.csel td{background:rgba(74,168,255,.16)}
+  .devcard tbody tr.csel td:first-child{color:var(--accent);box-shadow:inset 2px 0 0 var(--accent)}
+  .explist.editing .devcard{cursor:default;border-style:dashed}
+  .explist.editing .devcard:hover{border-color:var(--accent)}
+  .explist .exphead .expctl{display:flex;align-items:center;gap:14px}
+  .explist .exphead .chartbar{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px;color:var(--text-dim)}
+  .explist .exphead button.reload{background:none;border:1px solid var(--line);border-radius:6px;padding:4px 10px;
+    color:var(--accent);cursor:pointer;font-family:var(--mono);font-size:12px}
+  .explist .exphead button.reload:hover{border-color:var(--accent)}
+  .explist .exphead button.reload:disabled{color:var(--text-faint);cursor:default;border-color:var(--bg-grid)}
+  /* combined chart view */
+  .chartview{display:none;margin-top:18px}
+  .chartview .exphead{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    padding-bottom:12px;border-bottom:1px solid var(--line)}
+  .chartview .exphead .file{color:var(--text);display:flex;align-items:center;gap:10px;min-width:0}
+  .chartview .exphead .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 8px var(--accent)}
+  .chartview .exphead .expmeta{color:var(--text-dim);font-size:12px;margin-left:10px}
+  .chartview .exphead .expctl{display:flex;align-items:center;gap:16px}
+  .chartview a.reload{color:var(--accent);cursor:pointer;font-size:12px;text-decoration:none;border-bottom:1px solid transparent}
+  .chartview a.reload:hover{border-bottom-color:var(--accent)}
+  .chartview .hint{font-family:var(--mono);font-size:11px;color:var(--text-faint)}
+  .chartview .legend{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:14px 0 6px}
+  .chartview .legend .item{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;
+    font-family:var(--mono);font-size:11px;color:var(--text-dim)}
+  .chartview .legend .item:hover{color:var(--text)}
+  .chartview .legend .item.off{opacity:.4;text-decoration:line-through}
+  .chartview .legend .item .rng{color:var(--text-faint)}
+  .chartview .legend .sw{width:12px;height:12px;border-radius:3px}
+  /* clickable raw-channel legend on the trace */
+  .block .legend .item.togglable{cursor:pointer;user-select:none}
+  .block .legend .item.togglable:hover{color:var(--text)}
+  .block .legend .item.off{opacity:.4;text-decoration:line-through}
   .drop .schemastat{margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--text-faint)}
 
   /* results */
@@ -293,51 +333,39 @@
         <h1>GAPSCOPE</h1>
         <div class="sub">capture integrity inspector</div>
       </div>
+      <div class="hdr-nav">
+        <button type="button" class="hdrbtn" id="hdr-load" style="display:none" title="Load a different capture">⤓ Load another capture</button>
+        <button type="button" class="hdrbtn" id="hdr-back" style="display:none" title="Back to the experiment device list">← devices</button>
+      </div>
     </div>
 
-    <div class="controls">
+    <div class="controls" id="controls" style="display:none">
       <div class="ctl">
         <label for="interval">Nominal Δt</label>
-        <div class="row">
-          <input id="interval" type="number" step="0.0001" min="0" placeholder="auto">
-          <span class="unit">ms</span>
-          <button class="ghost" id="autodetect" title="Detect Δt from the loaded capture" disabled>auto</button>
-        </div>
+        <input id="interval" type="number" step="0.0001" min="0" placeholder="auto">
+        <span class="unit">ms</span>
+        <button class="ghost" id="autodetect" title="Detect Δt from the loaded capture" disabled>auto</button>
       </div>
       <div class="ctl">
         <label for="tol">Gap threshold</label>
-        <div class="row">
-          <input id="tol" type="number" step="0.1" min="1" value="1.5">
-          <span class="unit">× Δt</span>
-        </div>
+        <input id="tol" type="number" step="0.1" min="1" value="1.5">
+        <span class="unit">× Δt</span>
       </div>
       <div class="ctl">
         <label for="close">Too-close under</label>
-        <div class="row">
-          <input id="close" type="number" step="0.1" min="0" value="0.9" title="Spacings tighter than this fraction of Δt are flagged as too close">
-          <span class="unit">× Δt</span>
-        </div>
+        <input id="close" type="number" step="0.1" min="0" value="0.9" title="Spacings tighter than this fraction of Δt are flagged as too close">
+        <span class="unit">× Δt</span>
       </div>
       <div class="ctl">
         <label for="streamtype">Stream type</label>
-        <div class="row">
-          <select id="streamtype" title="How this stream's timing is interpreted. Auto classifies it; pick a value to override.&#10;pontual: sporadic arrivals — no Δt / missing&#10;constant: one regular cadence — count all dropouts&#10;burst: regular runs split by silences — missing counted only within runs">
-            <option value="auto">auto</option>
-            <option value="pontual">pontual</option>
-            <option value="constant">constant</option>
-            <option value="burst">burst</option>
-          </select>
-        </div>
-        <div class="auto-class" id="autoclass"></div>
+        <select id="streamtype" title="How this stream's timing is interpreted. Auto classifies it; pick a value to override.&#10;pontual: sporadic arrivals — no Δt / missing&#10;constant: one regular cadence — count all dropouts&#10;burst: regular runs split by silences — missing counted only within runs">
+          <option value="auto">auto</option>
+          <option value="pontual">pontual</option>
+          <option value="constant">constant</option>
+          <option value="burst">burst</option>
+        </select>
+        <span class="auto-class" id="autoclass"></span>
       </div>
-      <div class="ctl">
-        <label for="chunk">Read chunk</label>
-        <div class="row">
-          <input id="chunk" type="number" step="1" min="1" value="8" title="Byte-slice size used when streaming the file in (applies to the next load)">
-          <span class="unit">MB</span>
-        </div>
-      </div>
-      <button class="apply" id="apply" disabled>Apply</button>
     </div>
   </div>
 
@@ -362,21 +390,43 @@ time
   <div class="explist" id="explist">
     <div class="exphead">
       <div class="file"><span class="dot"></span><span class="name" id="expname"></span><span class="expmeta" id="expmeta"></span></div>
-      <a class="reload" id="expclose">Load another capture</a>
+      <div class="expctl">
+        <span class="chartbar" id="chartbar" style="display:none">
+          <span id="chartcount">0 selected</span>
+          <button type="button" class="reload" id="chartviz" disabled title="Plot the selected registers' values on one chart">Visualize</button>
+          <button type="button" class="reload" id="chartcancel">Cancel</button>
+        </span>
+        <button type="button" class="reload" id="chartnew" title="Build a combined value chart — then click registers across devices to add them">＋ New chart</button>
+      </div>
     </div>
     <div class="scanline" id="scanline"></div>
     <div class="devgrid" id="devgrid"></div>
   </div>
 
+  <!-- combined value chart -->
+  <div class="chartview" id="chartview">
+    <div class="exphead">
+      <div class="file"><span class="dot"></span><span class="name">Combined value chart</span><span class="expmeta" id="chartmeta"></span></div>
+      <div class="expctl">
+        <label class="chk"><input type="checkbox" id="chart-norm" checked> Normalize each line</label>
+        <span class="hint">scroll to zoom · drag to pan · double-click to reset</span>
+      </div>
+    </div>
+    <div class="legend" id="chart-legend"></div>
+    <div class="canvas-wrap" id="chart-wrap">
+      <canvas id="chart"></canvas>
+      <div class="readout" id="chart-ro"></div>
+    </div>
+    <div class="axis"><span id="chart-tstart">0 s</span><span id="chart-tmid"></span><span id="chart-tend"></span></div>
+  </div>
+
   <div class="loaded" id="loaded">
-    <a class="reload" id="backexp" style="display:none" title="Back to the experiment device list">← devices</a>
     <div class="file"><span class="dot"></span><span class="name" id="fname"></span></div>
     <div class="meta" id="fmeta"></div>
     <div class="regsel" id="regsel" style="display:none" title="Choose which stream of this selection to analyze">
       <button type="button" class="regsel-btn" id="regsel-btn"></button>
       <div class="regsel-menu" id="regsel-menu"></div>
     </div>
-    <a class="reload" id="reload">Load another capture</a>
   </div>
 
   <div class="progress" id="progress">
@@ -495,6 +545,7 @@ time
   var channelCount = 0;
   var chMin = [], chMax = []; // per-channel global value range
   var showRaw = false, showAnom = true, showTs = false;  // view-layer toggles
+  var chanHidden = [];       // chanHidden[k] true → raw channel k hidden (legend toggle)
   var malformed = 0, outOfOrder = 0, duplicates = 0;
   // Harp binary support: the schema applied to the CURRENT load — a parsed
   // device.yml ({device, whoAmI, registers:{addr:{name,members}}}) — plus a
@@ -514,6 +565,15 @@ time
   var experiment = null;    // { name, configFiles:[File], devices:[…] }
   var currentDevice = null; // device whose streams are loaded (experiment mode)
   var scanState = null;     // background summary scan: {epoch, paused, queue, idx, cont}
+  // Combined value chart: a cross-device selection of register value-lines.
+  var chartEditMode = false;     // clicking a register row toggles it into chartSel
+  var chartSel = {};             // selKey -> {dev, sIdx, ch, name, devName}
+  var chartData = null;          // {lines:[{label,off,vals,min,max,hidden}], full} once visualized
+  var cvBase = 0, cvStart = 0, cvEnd = 0, cvFull = 0;   // chart view window: domain [cvBase, cvBase+cvFull], visible [cvStart,cvEnd]
+  var cvSelRect = null;          // {xa,xb} drag-select rectangle (chart pixels) while selecting
+  var chartGeom = null;          // plot geometry from the last drawChart: {plotL,plotW,padTop,plotH}
+  var CHART_MAX_PTS = 300000;    // per-stream point cap; values are decimated on load above this
+  var CHUNK_BYTES = 8 * 1024 * 1024;  // fixed 8 MB byte-slice size for streaming reads
   // Harp time is seconds since 1904-01-01; Unix epoch is 1970-01-01, which is
   // later by 2082844800 s. Subtracting this offset (in ns) from a clock-synced
   // Harp timestamp gives Unix-epoch ns so absolute/wall-clock mode reads right.
@@ -559,7 +619,7 @@ time
       progress = $("progress"), pfill = $("pfill"), ptxt = $("ptxt"),
       intervalIn = $("interval"), tolIn = $("tol"), closeIn = $("close"),
       typeSel = $("streamtype"), autoClassEl = $("autoclass"),
-      applyBtn = $("apply"), autoBtn = $("autodetect");
+      autoBtn = $("autodetect");
 
   // ---------- parsing ----------
   var TS_RE = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?\s*(Z|[+-]\d{2}:?\d{2})?$/;
@@ -596,7 +656,7 @@ time
     // a single stream is placed on the shared experiment clock (else own span)
     refOriginNs = (experiment && experiment.timeline) ? experiment.timeline.startNs : null;
     firstNs = 0n; offsets = []; gaps = [];
-    channels = []; channelNames = []; channelCount = 0; chMin = []; chMax = [];
+    channels = []; channelNames = []; channelCount = 0; chMin = []; chMax = []; chanHidden = [];
     malformed = 0; outOfOrder = 0; duplicates = 0;
     harpInfo = "";                // description of the binary load (set by the Harp parser)
     viewStart = 0; viewEnd = 0;   // force full-extent view for the new capture
@@ -661,9 +721,7 @@ time
   // split into lines, carrying the trailing partial line into the next chunk.
   function streamParse(file){
     return new Promise(function(resolve, reject){
-      var chunkMB = parseFloat($("chunk").value);
-      if(!(chunkMB > 0)) chunkMB = 8;
-      var CHUNK = Math.round(chunkMB * 1024 * 1024);   // byte-slice size (tunable)
+      var CHUNK = CHUNK_BYTES;
       var parser = makeLineParser();
       var decoder = new TextDecoder("utf-8");
       var tail = "";                 // incomplete final line carried between chunks
@@ -810,9 +868,7 @@ time
   // binary messages instead of decoding text lines.
   function streamParseBinaryFiles(files){
     return new Promise(function(resolve, reject){
-      var chunkMB = parseFloat($("chunk").value);
-      if(!(chunkMB > 0)) chunkMB = 8;
-      var CHUNK = Math.round(chunkMB * 1024 * 1024);
+      var CHUNK = CHUNK_BYTES;
       var parser = makeHarpParser();
       var grand = files.reduce(function(t, f){ return t + (f.size || 0); }, 0);
       var done = 0, fi = 0;                         // bytes finished in prior files; current file index
@@ -845,6 +901,42 @@ time
   }
   function streamParseBinary(file){ return streamParseBinaryFiles([file]); }
 
+  // Stream one or more CSV/text files in byte chunks through a SINGLE line parser,
+  // so same-base hourly chunks concatenate into one continuous timeline (the same
+  // way streamParseBinaryFiles combines a register's .bin files). Files are read
+  // in the given order; the tail carry resets at each file boundary.
+  function streamParseTextFiles(files){
+    return new Promise(function(resolve, reject){
+      var CHUNK = CHUNK_BYTES;
+      var parser = makeLineParser();
+      var grand = files.reduce(function(t, f){ return t + (f.size || 0); }, 0);
+      var done = 0, fi = 0;
+      function nextFile(){
+        if(fi >= files.length){ resolve(); return; }
+        var file = files[fi];
+        var decoder = new TextDecoder("utf-8"), tail = "", pos = 0, total = file.size || 0;
+        var fr = new FileReader();
+        fr.onerror = function(){ reject(fr.error || new Error("read error")); };
+        fr.onload = function(){
+          var last = pos >= total;
+          var combined = tail + decoder.decode(new Uint8Array(fr.result), { stream: !last });
+          var lines = combined.split(/\r?\n/);
+          tail = last ? "" : lines.pop();
+          for(var j=0; j<lines.length; j++) parser.feed(lines[j]);
+          var frac = grand ? (done + pos)/grand : 1;
+          pfill.style.width = (frac*100).toFixed(1) + "%";
+          ptxt.textContent = "Scanning samples… " + offsets.length.toLocaleString()
+            + (files.length > 1 ? "  (file "+(fi+1)+"/"+files.length+")" : "");
+          if(last){ done += total; fi++; setTimeout(nextFile, 0); }
+          else setTimeout(readChunk, 0);
+        };
+        function readChunk(){ var end = Math.min(pos + CHUNK, total); var sl = file.slice(pos, end); pos = end; fr.readAsArrayBuffer(sl); }
+        readChunk();
+      }
+      nextFile();
+    });
+  }
+
   // Read just the first message header of a .bin to learn its register address
   // and first timestamp (for grouping + time-ordering) without reading the body.
   function readHarpHeader(file){
@@ -856,14 +948,19 @@ time
         if(b.length < 12){ resolve({ file: file, ok: false }); return; }
         var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
         var ptype = dv.getUint8(4), hasTs = (ptype & HARP_TS_MASK) !== 0;
-        var ok = harpDtype(ptype & ~HARP_TS_MASK) != null && hasTs;
+        var dt = harpDtype(ptype & ~HARP_TS_MASK);
+        var ok = dt != null && hasTs;
         var ts = hasTs ? (BigInt(dv.getUint32(5, true))*1000000000n + BigInt(dv.getUint16(9, true))*32000n) : null;
         // a register data file repeats one address at a fixed stride; a register
         // SNAPSHOT dump (the per-register device state written at connect) mixes
         // addresses/strides — peek at the second message to tell them apart
         var addr = dv.getUint8(2), stride = dv.getUint8(1) + 2, snapshot = false;
         if(stride >= 6 && b.length >= stride + 3 && dv.getUint8(stride + 2) !== addr) snapshot = true;
-        resolve({ file: file, address: addr, firstTs: ts, stride: stride, hasTs: hasTs, size: file.size || 0, ok: ok || snapshot, snapshot: snapshot });
+        // number of array elements = payload bytes / dtype size (minus checksum);
+        // a register with nEl>1 yields one value-line per position
+        var dataOff = hasTs ? 11 : 5;
+        var nEl = dt ? Math.max(1, Math.floor((stride - dataOff - 1) / dt.size)) : 1;
+        resolve({ file: file, address: addr, firstTs: ts, stride: stride, hasTs: hasTs, nEl: nEl, size: file.size || 0, ok: ok || snapshot, snapshot: snapshot });
       };
       fr.readAsArrayBuffer(file.slice(0, 1024));
     });
@@ -961,11 +1058,58 @@ time
       fr1.readAsArrayBuffer(file.slice(0, SLICE));
     });
   }
+  // CSV chunk naming mirrors the bins: <base>_<timestamp>.csv (hourly chunks of
+  // one logical stream). Strip the extension, then a trailing timestamp token, to
+  // recover the base ("East_1904-01-06T04-00-00" → "East"). Chunks that share a
+  // base are one stream, concatenated in time order.
+  function csvBaseName(name){
+    var b = (name || "").replace(/\.[^.]+$/, "");                 // drop extension
+    b = b.replace(/[_-]\d{4}-\d{2}-\d{2}[tT][0-9:_\-]*z?$/i, ""); // drop trailing timestamp
+    return b || (name || "");
+  }
+  // Group a device's CSV files by base name; each group is one stream, its files
+  // sorted by name (the embedded timestamp orders the hourly chunks).
+  function groupCsvs(files){
+    var by = {};
+    files.forEach(function(f){ var base = csvBaseName(f.name || ""); (by[base] = by[base] || []).push(f); });
+    return Object.keys(by).map(function(base){
+      var fs = by[base].slice().sort(function(a, b){ var x=a.name||"", y=b.name||""; return x<y?-1:x>y?1:0; });
+      return { base: base, files: fs, bytes: fs.reduce(function(t, f){ return t + (f.size||0); }, 0), cols: null, nCols: 0 };
+    });
+  }
+  // Peek a CSV's first 64 KB for its column layout: the header line (first
+  // non-empty line whose first field isn't a timestamp) names the data columns
+  // (fields after the time column); without one, columns are col0…colN.
+  function readCsvHeader(file){
+    return new Promise(function(resolve){
+      var fr = new FileReader();
+      fr.onerror = function(){ resolve({ cols: [], nCols: 0 }); };
+      fr.onload = function(){
+        var lines = new TextDecoder("utf-8").decode(new Uint8Array(fr.result)).split(/\r?\n/);
+        var header = null, dataLine = null;
+        for(var i=0; i<lines.length; i++){
+          var ln = lines[i]; if(!ln || !ln.trim()) continue;
+          var c = ln.indexOf(","), f0 = (c === -1 ? ln : ln.slice(0, c)).trim();
+          if(parseTsNs(f0) === null){ if(!header) header = ln; }   // non-timestamp first field → header
+          else { dataLine = ln; break; }
+        }
+        var ref = header || dataLine || "", parts = ref.split(",");
+        var nCols = Math.max(0, parts.length - 1), cols = [];
+        for(var k=0; k<nCols; k++) cols.push(header ? ((parts[k+1]||"").trim() || ("col"+k)) : ("col"+k));
+        resolve({ cols: cols, nCols: nCols });
+      };
+      fr.readAsArrayBuffer(file.slice(0, 65536));
+    });
+  }
   // First/last absolute (shifted) timestamps of one stream.
   function streamTimeBounds(stream){
     if(stream.kind === "csv"){
-      return readCsvBounds(stream.file).then(function(b){
-        return b ? { t0: shiftTsNs(b.t0), t1: shiftTsNs(b.t1) } : null;
+      var files = stream.files, f0 = files[0], fl = files[files.length-1];
+      return Promise.all([readCsvBounds(f0), readCsvBounds(fl)]).then(function(b){
+        var b0 = b[0], b1 = b[1];
+        var t0 = b0 ? b0.t0 : (b1 ? b1.t0 : null);
+        var t1 = b1 ? b1.t1 : (b0 ? b0.t1 : null);
+        return (t0 !== null && t1 !== null) ? { t0: shiftTsNs(t0), t1: shiftTsNs(t1) } : null;
       });
     }
     var g = stream.group, last = g[g.length-1];
@@ -1811,11 +1955,12 @@ time
       ctx.fillText("— no data in this time range —", w/2, 12); ctx.textAlign = "start";
     }
 
-    // axis labels reflect the visible window (always)
-    var dp = spanSec < 1 ? 4 : (spanSec < 10 ? 3 : 2);
-    $("t-start").textContent = (t0/1e9).toFixed(dp)+" s  ·  "+clockInline(t0);
-    $("t-mid").textContent = ((t0+span/2)/1e9).toFixed(dp)+" s";
-    $("t-end").textContent = (t1/1e9).toFixed(dp)+" s  ·  "+clockInline(t1);
+    // axis labels reflect the visible window; elapsed time shown as a composite
+    // (d/h/m/s/ms/µs) at a precision matched to the span, plus the wall clock
+    var tStep = niceTimeStep(spanSec);
+    $("t-start").textContent = fmtElapsedNs(t0, tStep)+"  ·  "+clockInline(t0);
+    $("t-mid").textContent = fmtElapsedNs(t0+span/2, tStep);
+    $("t-end").textContent = fmtElapsedNs(t1, tStep)+"  ·  "+clockInline(t1);
 
     traceData = { col: col, w: w, baseY: baseY, topY: 14, threshold: threshold, raw: rawOn };
   }
@@ -1917,7 +2062,14 @@ time
       var mn = chMin[k], mx = chMax[k], rng = mx - mn; if(!(rng > 0)) rng = 1;
       return bot - ((v - mn)/rng) * (bot - top);
     };
+    // horizontal Y gridlines (value scale reference; each channel is normalized to
+    // its own range, shown per-channel in the clickable legend)
+    ctx.save();
+    ctx.strokeStyle = "rgba(38,52,74,.5)"; ctx.lineWidth = 1; ctx.setLineDash([2,3]);
+    for(var gy=0; gy<=4; gy++){ var yy = top + (bot-top)*gy/4; ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(w, yy); ctx.stroke(); }
+    ctx.restore();
     for(var k=0;k<channelCount;k++){
+      if(chanHidden[k]) continue;        // toggled off via the legend
       var color = chanColor(k);
       // min/max envelope (faint)
       ctx.strokeStyle = color; ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
@@ -2060,6 +2212,75 @@ time
     for(var i=0;i<steps.length;i++){ if(steps[i] >= target) return steps[i]; }
     return steps[steps.length-1];
   }
+  // A "nice" time-tick step (seconds) spanning 1 µs … 10 days, for axes whose
+  // visible range can be microseconds or many hours.
+  var TIME_STEPS = [1e-6,2e-6,5e-6,1e-5,2e-5,5e-5,1e-4,2e-4,5e-4,1e-3,2e-3,5e-3,1e-2,2e-2,5e-2,
+    0.1,0.2,0.5,1,2,5,10,15,30,60,120,300,600,900,1800,3600,7200,14400,21600,43200,86400,172800,432000,864000];
+  function niceTimeStep(totalSec){
+    var target = totalSec/8;
+    for(var i=0;i<TIME_STEPS.length;i++){ if(TIME_STEPS[i] >= target) return TIME_STEPS[i]; }
+    return TIME_STEPS[TIME_STEPS.length-1];
+  }
+  // Composite elapsed-time label: instead of one giant unit (16524323ms) the
+  // duration is split into d/h/m/s/ms/µs (e.g. "4h35m24s323ms"). The smallest unit
+  // shown follows the tick step so the precision matches the zoom; intermediate
+  // components are zero-padded so neighbouring ticks line up.
+  var ELAPSED_UNITS = [
+    { ns: 86400000000000, suf: "d",  pad: 0, mod: 0    },
+    { ns: 3600000000000,  suf: "h",  pad: 2, mod: 24   },
+    { ns: 60000000000,    suf: "m",  pad: 2, mod: 60   },
+    { ns: 1000000000,     suf: "s",  pad: 2, mod: 60   },
+    { ns: 1000000,        suf: "ms", pad: 3, mod: 1000 },
+    { ns: 1000,           suf: "µs", pad: 3, mod: 1000 }
+  ];
+  function resIndexForStep(stepSec){
+    if(stepSec >= 86400) return 0;
+    if(stepSec >= 3600)  return 1;
+    if(stepSec >= 60)    return 2;
+    if(stepSec >= 1)     return 3;
+    if(stepSec >= 1e-3)  return 4;
+    return 5;
+  }
+  function fmtElapsedNs(ns, stepSec){
+    var neg = ns < 0, v = Math.abs(Math.round(ns)), resI = resIndexForStep(stepSec);
+    var comp = ELAPSED_UNITS.map(function(u){ var c = Math.floor(v / u.ns); return u.mod ? c % u.mod : c; });
+    var first = -1;
+    for(var j=0; j<=resI; j++){ if(comp[j] > 0){ first = j; break; } }
+    if(first < 0) first = resI;                 // all higher units zero → "0<res>"
+    var parts = [];
+    for(var k=first; k<=resI; k++){
+      parts.push((k === first ? String(comp[k]) : String(comp[k]).padStart(ELAPSED_UNITS[k].pad, "0")) + ELAPSED_UNITS[k].suf);
+    }
+    return (neg ? "-" : "") + parts.join(" ");
+  }
+  // The experiment has a real wall-clock reference when its timeline start lands in
+  // the 2020s or later (epoch-shifted ns); clock-synced Harp/CSV captures do, while
+  // boot-relative ones don't. When true, the graphs show absolute UTC time.
+  function expAbsolute(){
+    return !!(experiment && experiment.timeline && experiment.timeline.startNs > 1577836800000000000n);
+  }
+  // Absolute epoch ns for a chart offset (ns measured from the experiment start).
+  function chartAbsNs(off){
+    return (experiment && experiment.timeline ? experiment.timeline.startNs : 0n) + BigInt(Math.round(off));
+  }
+  function clockDate(epochNs){ return new Date(Number(epochNs / 1000000n)); }
+  // UTC tick label, precision following the tick step (date → HH:MM → :SS → .mmm)
+  function fmtClockTick(epochNs, stepSec){
+    var d = clockDate(epochNs);
+    if(stepSec >= 86400) return d.getUTCFullYear()+"-"+pad(d.getUTCMonth()+1,2)+"-"+pad(d.getUTCDate(),2);
+    var hm = pad(d.getUTCHours(),2)+":"+pad(d.getUTCMinutes(),2);
+    if(stepSec >= 60) return hm;
+    var hms = hm+":"+pad(d.getUTCSeconds(),2);
+    if(stepSec >= 1) return hms;
+    var frac = Number(epochNs % 1000000000n);
+    return (stepSec >= 1e-3) ? hms+"."+pad(Math.floor(frac/1e6),3) : hms+"."+pad(Math.floor(frac/1e3),6);
+  }
+  // Full UTC stamp for the hover readout / summary row.
+  function fmtClockFull(epochNs){
+    var d = clockDate(epochNs), frac = Number(epochNs % 1000000000n);
+    return d.getUTCFullYear()+"-"+pad(d.getUTCMonth()+1,2)+"-"+pad(d.getUTCDate(),2)+" "
+      + pad(d.getUTCHours(),2)+":"+pad(d.getUTCMinutes(),2)+":"+pad(d.getUTCSeconds(),2)+"."+pad(Math.floor(frac/1000),6);
+  }
 
   // ---------- render results ----------
   function render(){
@@ -2159,6 +2380,7 @@ time
     // Make the container visible BEFORE drawing — a hidden canvas reports
     // clientWidth 0, which would size the canvas to zero pixels (blank).
     results.style.display = "block";
+    $("controls").style.display = "flex";   // analysis controls only apply to a single loaded stream
 
     drawTrace();
     drawHeat();
@@ -2179,8 +2401,9 @@ time
     };
     el.innerHTML = channelNames.map(function(nm, k){
       var rng = (chMin[k] === Infinity) ? "no data" : (fmtNum(chMin[k]) + "…" + fmtNum(chMax[k]));
-      return '<div class="item"><span class="sw" style="background:'+chanColor(k)+'"></span>'+
-             nm+' <span style="color:var(--text-faint)">['+rng+']</span></div>';
+      return '<div class="item togglable'+(chanHidden[k]?' off':'')+'" data-k="'+k+'" title="Click to show/hide this channel">'+
+             '<span class="sw" style="background:'+chanColor(k)+'"></span>'+
+             esc(nm)+' <span style="color:var(--text-faint)">['+rng+']</span></div>';
     }).join("");
   }
 
@@ -2492,7 +2715,7 @@ time
       // Δt itself is never persisted: registers run at different rates, so each
       // loaded stream re-detects its own nominal interval. Only the relative
       // thresholds (multipliers of Δt) and view preferences are kept.
-      var s = { tolerance: tolerance, closeFactor: closeFactor, showRaw: showRaw, showAnom: showAnom, showTs: showTs, chunkMB: parseFloat($("chunk").value) || 8 };
+      var s = { tolerance: tolerance, closeFactor: closeFactor, showRaw: showRaw, showAnom: showAnom, showTs: showTs };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
     }catch(e){ /* storage unavailable (private mode, etc.) — ignore */ }
   }
@@ -2508,7 +2731,6 @@ time
     if(typeof s.showRaw === "boolean") showRaw = s.showRaw;
     if(typeof s.showAnom === "boolean") showAnom = s.showAnom;
     if(typeof s.showTs === "boolean") showTs = s.showTs;
-    if(typeof s.chunkMB === "number" && s.chunkMB > 0) $("chunk").value = s.chunkMB;
   }
   // mirror the current settings (globals) into the on-screen controls
   function reflectSettings(){
@@ -2524,15 +2746,37 @@ time
     note.style.display = "block";
     note.textContent = msg;
     results.style.display = "none";
-    applyBtn.disabled = true;
   }
 
   // Return to the "choose something" view after an error or a back action:
   // the experiment device list when an experiment is open, else the drop zone.
   function returnHome(){
     progress.style.display = "none";
+    $("controls").style.display = "none";
     if(experiment){ $("explist").style.display = "block"; resumeScan(); }
     else drop.style.display = "block";
+    updateHeaderNav();
+  }
+
+  // Header navigation buttons: "Load another capture" shows whenever a capture or
+  // experiment is active; "← devices" shows when viewing a device or the combined
+  // chart inside an experiment.
+  function isShown(id){ var d = $(id).style.display; return !!d && d !== "none"; }
+  function updateHeaderNav(){
+    var chartOpen = isShown("chartview");
+    var loadActive = !!experiment || isShown("loaded") || isShown("results") || isShown("explist") || chartOpen;
+    $("hdr-load").style.display = loadActive ? "" : "none";
+    $("hdr-back").style.display = (experiment && (currentDevice || chartOpen)) ? "" : "none";
+  }
+  // From a device analysis view or the combined chart, return to the device list.
+  function goBackToDevices(){
+    if(!experiment) return;
+    $("chartview").style.display = "none";
+    currentDevice = null; streamList = null; streamIdx = -1;
+    loaded.style.display = "none"; results.style.display = "none";
+    note.style.display = "none"; $("controls").style.display = "none";
+    $("explist").style.display = "block"; resumeScan();
+    updateHeaderNav();
   }
 
   // Entry point for any dropped/selected set. device.yml schemas are imported
@@ -2654,7 +2898,9 @@ time
   }
 
   // The loadable streams of a device folder: one per Harp register address (its
-  // files in timestamp order) plus one per CSV-ish file.
+  // files in timestamp order) plus one per CSV base name (its hourly chunks in
+  // time order). CSV column layout comes from dev._csvGroups (header-peeked in
+  // startExperiment); the flat-bin path passes no CSVs.
   function buildStreams(dev){
     var streams = [];
     dev.addresses.forEach(function(a){
@@ -2662,12 +2908,32 @@ time
         return x.firstTs < y.firstTs ? -1 : x.firstTs > y.firstTs ? 1 : 0;
       });
       var bytes = group.reduce(function(t, h){ return t + h.size; }, 0);
-      streams.push({ kind: "bin", addr: a, group: group, bytes: bytes, stats: null });
+      streams.push({ kind: "bin", addr: a, group: group, bytes: bytes, stats: null, nEl: group[0].nEl || 1 });
     });
-    dev.csvs.forEach(function(f){
-      streams.push({ kind: "csv", file: f, bytes: f.size || 0, stats: null });
+    var csvGroups = dev._csvGroups || groupCsvs(dev.csvs || []);
+    csvGroups.forEach(function(g){
+      streams.push({ kind: "csv", base: g.base, files: g.files, bytes: g.bytes, stats: null,
+                     nEl: g.nCols || 1, cols: g.cols || null });
     });
     return streams;
+  }
+  // The value-line names a stream produces — one per array position (bin) or data
+  // column (CSV). Uses device.yml member names / CSV header names when known,
+  // else <regName>_<i> / col<i> (or just the register name for a scalar).
+  function streamChannelNames(s, schema){
+    if(s.kind === "csv"){
+      var nc = s.nEl || 1, cols = [];
+      for(var j=0; j<nc; j++) cols.push((s.cols && s.cols[j]) || ("col" + j));
+      return cols;
+    }
+    var reg = schema && schema.registers ? schema.registers[s.addr] : null;
+    var base = (reg && reg.name) ? reg.name : ("reg" + s.addr);
+    var n = s.nEl || 1, out = [];
+    for(var i=0; i<n; i++){
+      var m = reg && reg.members && reg.members[i];
+      out.push(m || (n > 1 ? base + "_" + i : base));
+    }
+    return out;
   }
   function largestStream(streams){
     var best = 0;
@@ -2675,7 +2941,10 @@ time
     return best;
   }
   function streamLabel(s, schema){
-    if(s.kind === "csv") return s.file.name;
+    if(s.kind === "csv"){
+      var nm = s.base || (s.files && s.files[0] && s.files[0].name) || "csv";
+      return nm + (s.files && s.files.length > 1 ? " (" + s.files.length + " files)" : "");
+    }
     var reg = schema && schema.registers ? schema.registers[s.addr] : null;
     return (reg && reg.name ? reg.name : "reg " + s.addr)
       + " (addr " + s.addr + (s.group.length > 1 ? ", " + s.group.length + " files" : "") + ")";
@@ -2687,17 +2956,35 @@ time
   function loadStream(idx){
     streamIdx = idx;
     var s = streamList[idx];
-    if(s.kind === "csv"){ loadSingleFile(s.file); return; }
-    var files = s.group.map(function(h){ return h.file; });
-    var reg = harpSchema && harpSchema.registers ? harpSchema.registers[s.addr] : null;
-    var regName = (reg && reg.name) || ("reg " + s.addr);
     var loadStart = performance.now();
     note.style.display = "none"; results.style.display = "none";
     drop.style.display = "none"; loaded.style.display = "none";
     $("explist").style.display = "none";
     progress.style.display = "block"; pfill.style.width = "0%";
-    ptxt.textContent = "Reading " + files.length + " file(s)…";
     resetData();
+    if(s.kind === "csv"){
+      var cfiles = s.files;
+      ptxt.textContent = "Reading " + cfiles.length + " file(s)…";
+      streamParseTextFiles(cfiles).then(function(){
+        if(offsets.length < 2){
+          returnHome();
+          showError("Found " + offsets.length + " timestamped row(s) for " + s.base + ".");
+          return;
+        }
+        var single = cfiles.length === 1 ? cfiles[0].name : s.base;
+        var label = currentDevice ? (currentDevice.name + " · " + single) : single;
+        var extra = cfiles.length > 1 ? (" · " + cfiles.length + " files combined") : "";
+        finishLoad(label, s.bytes, loadStart, extra);
+      }).catch(function(){
+        returnHome();
+        showError("Could not read the selected file(s).");
+      });
+      return;
+    }
+    var files = s.group.map(function(h){ return h.file; });
+    var reg = harpSchema && harpSchema.registers ? harpSchema.registers[s.addr] : null;
+    var regName = (reg && reg.name) || ("reg " + s.addr);
+    ptxt.textContent = "Reading " + files.length + " file(s)…";
     streamParseBinaryFiles(files).then(function(){
       if(offsets.length < 2){
         returnHome();
@@ -2776,11 +3063,10 @@ time
       $("fname").textContent = displayName;
       $("fmeta").textContent = (sizeBytes/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)
         + (harpInfo ? " · "+harpInfo : "") + (extra || "") + " · loaded in "+loadStr;
-      $("backexp").style.display = currentDevice ? "" : "none";
       loaded.style.display = "flex";
-      applyBtn.disabled = false;
       autoBtn.disabled = false;
       render();
+      updateHeaderNav();
     }, 0);
   }
 
@@ -2832,6 +3118,7 @@ time
     teardownExperiment();
     note.style.display = "none"; results.style.display = "none";
     drop.style.display = "none"; loaded.style.display = "none";
+    $("controls").style.display = "none";
     progress.style.display = "block"; pfill.style.width = "0%";
     ptxt.textContent = "Scanning experiment structure…";
     var devices = split.dirNames.map(function(dir){
@@ -2844,10 +3131,10 @@ time
         else other++;
       });
       return { name: dir, binFiles: bins, csvs: csvs, other: other, bytes: bytes,
-               byAddr: {}, addresses: [], snapshot: null, schema: null, streams: [], _card: null };
+               byAddr: {}, addresses: [], snapshot: null, schema: null, streams: [], _card: null, _expanded: {} };
     });
     var work = devices.map(function(dev){
-      return Promise.all(dev.binFiles.map(readHarpHeader)).then(function(infos){
+      var binWork = Promise.all(dev.binFiles.map(readHarpHeader)).then(function(infos){
         var snaps = infos.filter(function(h){ return h.ok && h.snapshot; });
         infos.forEach(function(h){
           if(h.ok && !h.snapshot && h.firstTs !== null)
@@ -2856,6 +3143,13 @@ time
         dev.addresses = Object.keys(dev.byAddr).map(Number).sort(function(a, b){ return a - b; });
         if(snaps.length) return parseHarpSnapshot(snaps[0].file).then(function(s){ dev.snapshot = s; });
       });
+      // group the device's CSV chunks by base name and peek each group's header
+      // for its column layout (one value-line per data column, like a register array)
+      var csvGroups = groupCsvs(dev.csvs);
+      var csvWork = Promise.all(csvGroups.map(function(g){
+        return readCsvHeader(g.files[0]).then(function(hd){ g.cols = hd.cols; g.nCols = hd.nCols; });
+      })).then(function(){ dev._csvGroups = csvGroups; });
+      return Promise.all([binWork, csvWork]);
     });
     Promise.all(work).then(function(){
       devices.forEach(function(dev){
@@ -2879,7 +3173,13 @@ time
   function teardownExperiment(){
     cancelScan();
     experiment = null; currentDevice = null;
+    chartEditMode = false; chartSel = {}; chartData = null;
+    $("chartview").style.display = "none";
+    $("chartbar").style.display = "none";
+    $("chartnew").style.display = "";
+    $("explist").classList.remove("editing");
     $("explist").style.display = "none";
+    updateHeaderNav();
   }
 
   var ESC_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
@@ -2897,14 +3197,26 @@ time
       card.className = "devcard" + (dev.streams.length ? "" : " inert");
       dev._card = card;
       fillDevCard(dev);
-      // click a specific register row → open that stream; anywhere else → default
+      // editing a chart: clicking a row toggles it into the selection. Otherwise
+      // a register row opens that stream; clicking elsewhere opens the default.
+      // The caret on an array register just expands/collapses its value rows.
       if(dev.streams.length) card.addEventListener("click", function(e){
+        var caret = e.target.closest("[data-toggle]");
+        if(caret){
+          var ti = +caret.getAttribute("data-toggle");
+          dev._expanded[ti] = !dev._expanded[ti];
+          fillDevCard(dev);
+          return;
+        }
         var row = e.target.closest("tr[data-i]");
+        if(chartEditMode){ if(row) toggleChartRow(dev, row); return; }
         openDevice(dev, row ? +row.getAttribute("data-i") : -1);
       });
       grid.appendChild(card);
     });
+    $("explist").classList.toggle("editing", chartEditMode);
     $("explist").style.display = "block";
+    updateHeaderNav();
   }
 
   // (Re)build one device card: identity line, file inventory, and a stream
@@ -2925,7 +3237,20 @@ time
       h += '<table><thead><tr><th>stream</th><th>type</th><th class="r">msgs</th><th class="r">Δt</th><th class="r">missing</th></tr></thead><tbody>';
       dev.streams.forEach(function(s, i){
         var st = s.stats;
-        h += '<tr data-i="' + i + '" title="Open this stream"><td>' + esc(streamLabel(s, dev.schema)) + '</td>';
+        var names = streamChannelNames(s, dev.schema), isArr = names.length > 1;
+        var expanded = isArr && !!(dev._expanded && dev._expanded[i]);
+        // a scalar register row IS its one line (ch 0); an array register row is a
+        // group toggle whose sub-rows are the lines — highlight by what's selected
+        var rowSel = isArr
+          ? names.every(function(_, ci){ return isChartSelected(dev.name, i, ci); })
+          : isChartSelected(dev.name, i, 0);
+        var caret = isArr
+          ? '<span class="caret" data-toggle="' + i + '" title="Show/hide values">' + (expanded ? '▾' : '▸') + '</span> '
+          : '';
+        var vcount = isArr ? ' <span class="vcount">' + names.length + '</span>' : '';
+        h += '<tr data-i="' + i + '"' + (rowSel ? ' class="csel"' : '')
+           + ' title="' + (chartEditMode ? (isArr ? 'Add/remove all positions' : 'Add/remove from chart') : 'Open this stream') + '">'
+           + '<td>' + caret + esc(streamLabel(s, dev.schema)) + vcount + '</td>';
         if(st){
           var typeCell = '<td><span class="stype ' + st.type + '" title="' + st.type + '">'
             + st.type.charAt(0).toUpperCase() + '</span></td>';
@@ -2940,6 +3265,14 @@ time
              + missCell;
         } else h += '<td>…</td><td class="r">…</td><td class="r">…</td><td class="r">…</td>';
         h += '</tr>';
+        // array register: one value-line per position (collapsed by default;
+        // stats are per-register only)
+        if(isArr && expanded) names.forEach(function(nm, ci){
+          var sel = isChartSelected(dev.name, i, ci);
+          h += '<tr data-i="' + i + '" data-ch="' + ci + '" class="subrow' + (sel ? ' csel' : '')
+             + '" title="Add/remove this value from the chart"><td><span class="pos">[' + ci + ']</span> '
+             + esc(nm) + '</td><td></td><td class="r"></td><td class="r"></td><td class="r"></td></tr>';
+        });
       });
       h += '</tbody></table>';
     } else {
@@ -2959,6 +3292,405 @@ time
     $("explist").style.display = "none";
     var i = (idx >= 0 && idx < streamList.length) ? idx : largestStream(streamList);
     loadStream(i);
+  }
+
+  // ---------- combined value chart ----------
+  // A selection of register value-lines across devices, plotted together against
+  // the shared experiment time axis. Values only — no timing/missing analysis.
+  function selKey(devName, sIdx, ch){ return devName + "|" + sIdx + "|" + ch; }
+  function isChartSelected(devName, sIdx, ch){ return !!chartSel[selKey(devName, sIdx, ch)]; }
+  function setLine(dev, sIdx, ch, name, on){
+    var k = selKey(dev.name, sIdx, ch);
+    if(on) chartSel[k] = { dev: dev, sIdx: sIdx, ch: ch, name: name, devName: dev.name };
+    else delete chartSel[k];
+  }
+  // Toggle whatever a clicked card row represents: a position sub-row toggles one
+  // line; an array register row toggles all its positions; a scalar row toggles
+  // its single line.
+  function toggleChartRow(dev, row){
+    var i = +row.getAttribute("data-i");
+    var chAttr = row.getAttribute("data-ch");
+    var s = dev.streams[i];
+    if(!s) return;
+    var names = streamChannelNames(s, dev.schema);
+    if(chAttr !== null){
+      var ci = +chAttr;
+      setLine(dev, i, ci, names[ci], !isChartSelected(dev.name, i, ci));
+    } else if(names.length > 1){
+      var allSel = names.every(function(_, ci){ return isChartSelected(dev.name, i, ci); });
+      names.forEach(function(nm, ci){ setLine(dev, i, ci, nm, !allSel); });
+    } else {
+      setLine(dev, i, 0, names[0], !isChartSelected(dev.name, i, 0));
+    }
+    fillDevCard(dev);
+    updateChartBar();
+  }
+  function chartSelCount(){ return Object.keys(chartSel).length; }
+  function updateChartBar(){
+    var n = chartSelCount();
+    $("chartcount").textContent = n + " selected";
+    $("chartviz").disabled = !n;
+  }
+  function enterChartEdit(){
+    chartEditMode = true; chartSel = {};
+    $("chartnew").style.display = "none";
+    $("chartbar").style.display = "flex";
+    $("explist").classList.add("editing");
+    updateChartBar();
+    refreshCards();
+  }
+  function exitChartEdit(){
+    chartEditMode = false; chartSel = {};
+    $("chartbar").style.display = "none";
+    $("chartnew").style.display = "";
+    $("explist").classList.remove("editing");
+    refreshCards();
+  }
+  function refreshCards(){
+    if(experiment) experiment.devices.forEach(function(d){ if(d._card) fillDevCard(d); });
+  }
+
+  // Parse one stream's values for the chart: timestamps anchored to the shared
+  // experiment origin + every array position / data column, decimated (keep every
+  // k-th sample) to a point cap so several streams stay in memory at once.
+  // Returns {offsets:[], chans:[[…]], min:[], max:[], nEl, kept}.
+  function loadChartStream(s, originNs){
+    if(s.kind === "csv") return loadChartCsv(s, originNs);
+    return new Promise(function(resolve, reject){
+      var files = s.group.map(function(h){ return h.file; });
+      var grand = s.bytes || 1;
+      var CHUNK = CHUNK_BYTES;
+      var stride = 0, hasTs = false, dt = null, nEl = 0, dataOff = 11, epochAdd = 0n, inited = false;
+      var keep = 1, msgIdx = 0;
+      var offsets = [], chans = [], cmin = [], cmax = [];
+      function init(view){
+        stride = view.getUint8(1) + 2;
+        var ptype = view.getUint8(4);
+        hasTs = (ptype & HARP_TS_MASK) !== 0;
+        dt = harpDtype(ptype & ~HARP_TS_MASK);
+        if(!dt || !hasTs || stride < 12) return false;
+        nEl = Math.max(1, Math.floor((stride - dataOff - 1) / dt.size));
+        var sec0 = view.getUint32(5, true);
+        epochAdd = sec0 > 3000000000 ? -HARP_EPOCH_OFFSET_NS : 0n;
+        var est = Math.max(1, Math.floor(grand / stride));
+        keep = Math.max(1, Math.ceil(est / CHART_MAX_PTS));
+        for(var k=0; k<nEl; k++){ chans[k] = []; cmin[k] = Infinity; cmax[k] = -Infinity; }
+        inited = true; return true;
+      }
+      var carry = new Uint8Array(0), fi = 0;
+      function feed(buf){
+        var b = concatBytes(carry, buf);
+        var view = new DataView(b.buffer, b.byteOffset, b.byteLength);
+        var i = 0, n = b.length;
+        if(!inited){ if(n < 12){ carry = b; return; } if(!init(view)){ carry = new Uint8Array(0); return; } }
+        for(; i + stride <= n; i += stride){
+          if((msgIdx++ % keep) !== 0) continue;
+          var sec = view.getUint32(i+5, true), micro = view.getUint16(i+9, true);
+          var tsNs = BigInt(sec)*1000000000n + BigInt(micro)*32000n + epochAdd;
+          offsets.push(Number(tsNs - originNs));
+          for(var k=0; k<nEl; k++){
+            var v = dt.read(view, i + dataOff + k*dt.size);
+            chans[k].push(v);
+            if(v === v){ if(v < cmin[k]) cmin[k] = v; if(v > cmax[k]) cmax[k] = v; }
+          }
+        }
+        carry = i < n ? b.slice(i) : new Uint8Array(0);
+      }
+      function nextFile(){
+        if(fi >= files.length){ resolve({ offsets: offsets, chans: chans, min: cmin, max: cmax, nEl: nEl, kept: keep }); return; }
+        var file = files[fi], pos = 0, total = file.size || 0;
+        carry = new Uint8Array(0);
+        var fr = new FileReader();
+        fr.onerror = function(){ reject(fr.error || new Error("read error")); };
+        fr.onload = function(){
+          feed(new Uint8Array(fr.result));
+          if(pos >= total){ carry = new Uint8Array(0); fi++; setTimeout(nextFile, 0); }
+          else setTimeout(readChunk, 0);
+        };
+        function readChunk(){ var end = Math.min(pos + CHUNK, total); var sl = file.slice(pos, end); pos = end; fr.readAsArrayBuffer(sl); }
+        readChunk();
+      }
+      nextFile();
+    });
+  }
+
+  // CSV counterpart of loadChartStream: stream the base's chunk files in order,
+  // decoding one data column per chart line. Decimated by row count (estimated
+  // from the first data line's length) to the same per-stream point cap.
+  function loadChartCsv(s, originNs){
+    return new Promise(function(resolve, reject){
+      var files = s.files, grand = s.bytes || 1, CHUNK = CHUNK_BYTES;
+      var started = false, shiftNs = 0n, nCols = 0, keep = 1, msgIdx = 0;
+      var offsets = [], chans = [], cmin = [], cmax = [];
+      function onLine(line){
+        if(!line) return;
+        var parts = line.split(",");
+        var f0 = parts[0].trim(); if(!f0) return;
+        var ts = parseTsNs(f0);
+        if(ts === null) return;                                  // header/preamble
+        if(!started){
+          started = true;
+          shiftNs = ts > 3000000000000000000n ? -HARP_EPOCH_OFFSET_NS : 0n;
+          nCols = Math.max(0, parts.length - 1);
+          for(var c=0; c<nCols; c++){ chans[c] = []; cmin[c] = Infinity; cmax[c] = -Infinity; }
+          var avgRow = Math.max(8, line.length + 1);             // rough bytes/row for decimation
+          keep = Math.max(1, Math.ceil((grand / avgRow) / CHART_MAX_PTS));
+        }
+        if((msgIdx++ % keep) !== 0) return;
+        offsets.push(Number((ts + shiftNs) - originNs));
+        for(var k=0; k<nCols; k++){
+          var v = k+1 < parts.length ? parseFloat(parts[k+1]) : NaN;
+          chans[k].push(v);
+          if(v === v){ if(v < cmin[k]) cmin[k] = v; if(v > cmax[k]) cmax[k] = v; }
+        }
+      }
+      var fi = 0;
+      function nextFile(){
+        if(fi >= files.length){ resolve({ offsets: offsets, chans: chans, min: cmin, max: cmax, nEl: nCols, kept: keep }); return; }
+        var file = files[fi], decoder = new TextDecoder("utf-8"), tail = "", pos = 0, total = file.size || 0;
+        var fr = new FileReader();
+        fr.onerror = function(){ reject(fr.error || new Error("read error")); };
+        fr.onload = function(){
+          var last = pos >= total;
+          var combined = tail + decoder.decode(new Uint8Array(fr.result), { stream: !last });
+          var lines = combined.split(/\r?\n/);
+          tail = last ? "" : lines.pop();
+          for(var j=0; j<lines.length; j++) onLine(lines[j]);
+          if(last){ fi++; setTimeout(nextFile, 0); }
+          else setTimeout(readChunk, 0);
+        };
+        function readChunk(){ var end = Math.min(pos + CHUNK, total); var sl = file.slice(pos, end); pos = end; fr.readAsArrayBuffer(sl); }
+        readChunk();
+      }
+      nextFile();
+    });
+  }
+
+  // Load every selected line and switch to the chart view.
+  function visualizeChart(){
+    if(!chartSelCount() || !experiment) return;
+    pauseScan();
+    var origin = (experiment.timeline ? experiment.timeline.startNs : 0n);
+    var full = (experiment.timeline ? experiment.timeline.durationNs : 0);
+    // group selected lines by stream so each stream is parsed only once
+    var byStream = {};
+    Object.keys(chartSel).forEach(function(key){
+      var it = chartSel[key], sk = it.devName + "|" + it.sIdx;
+      (byStream[sk] || (byStream[sk] = { dev: it.dev, s: it.dev.streams[it.sIdx], chs: [] })).chs.push(it);
+    });
+    var groups = Object.keys(byStream).map(function(k){ return byStream[k]; });
+    // show the chart view in a loading state
+    $("explist").style.display = "none";
+    drop.style.display = "none"; loaded.style.display = "none"; results.style.display = "none";
+    $("controls").style.display = "none";
+    note.style.display = "none";
+    progress.style.display = "block"; pfill.style.width = "0%";
+    ptxt.textContent = "Reading selected register values…";
+    Promise.all(groups.map(function(g){ return loadChartStream(g.s, origin); })).then(function(parsed){
+      var lines = [], decimated = false;
+      groups.forEach(function(g, gi){
+        var p = parsed[gi]; if(!p) return;
+        if(p.kept > 1) decimated = true;
+        // burst streams: break the line across inter-burst silences rather than
+        // drawing a long connecting segment over the empty stretch
+        var st = g.s.stats;
+        var brk = (st && st.type === "burst" && st.silenceNs) ? st.silenceNs : Infinity;
+        g.chs.forEach(function(c){
+          if(c.ch >= p.nEl) return;
+          lines.push({ label: g.dev.name + " · " + c.name, off: p.offsets,
+                       vals: p.chans[c.ch], min: p.min[c.ch], max: p.max[c.ch], breakNs: brk });
+        });
+      });
+      progress.style.display = "none";
+      if(!lines.length){ returnHome(); showError("None of the selected registers held readable values."); return; }
+      // window the chart over the experiment span; if there's no timeline, frame
+      // the loaded data's own min→max offset instead
+      var lo = 0, hi = full;
+      if(!(full > 0)){
+        lo = Infinity; hi = -Infinity;
+        lines.forEach(function(L){ if(L.off.length){ if(L.off[0] < lo) lo = L.off[0]; if(L.off[L.off.length-1] > hi) hi = L.off[L.off.length-1]; } });
+        if(!(hi > lo)){ lo = 0; hi = 1; }
+      }
+      chartData = { lines: lines, full: hi - lo, decimated: decimated };
+      cvBase = lo; cvFull = hi - lo; cvStart = lo; cvEnd = hi;
+      $("chartmeta").textContent = lines.length + " line" + (lines.length > 1 ? "s" : "")
+        + (decimated ? " · decimated for display" : "");
+      buildChartLegend();
+      $("chartview").style.display = "block";
+      drawChart();
+      updateHeaderNav();
+    }).catch(function(){
+      progress.style.display = "none"; returnHome();
+      showError("Could not read the selected register values.");
+    });
+  }
+
+  // distinct line colours, reusing the channel palette
+  function chartLineColor(i){ return CHAN_COLORS[i % CHAN_COLORS.length]; }
+  function fmtChartNum(v){
+    if(v === Infinity || v === -Infinity || v !== v) return "—";
+    if(Number.isInteger(v)) return String(v);
+    return Math.abs(v) >= 1000 ? v.toFixed(0) : parseFloat(v.toPrecision(4)).toString();
+  }
+  function buildChartLegend(){
+    $("chart-legend").innerHTML = chartData.lines.map(function(L, i){
+      var rng = (L.min === Infinity) ? "no data" : (fmtChartNum(L.min) + "…" + fmtChartNum(L.max));
+      return '<div class="item' + (L.hidden ? ' off' : '') + '" data-i="' + i + '" title="Click to show/hide this line">'
+        + '<span class="sw" style="background:' + chartLineColor(i) + '"></span>'
+        + esc(L.label) + ' <span class="rng">[' + rng + ']</span></div>';
+    }).join("");
+  }
+  // first index with arr[i] >= x (arr ascending) — generic lowerBound for chart offsets
+  function lboundArr(arr, x){
+    var lo = 0, hi = arr.length;
+    while(lo < hi){ var m = (lo+hi)>>1; if(arr[m] < x) lo = m+1; else hi = m; }
+    return lo;
+  }
+  // index of the sample nearest in time to x (ascending arr); -1 if empty
+  function nearestIdx(arr, x){
+    if(!arr.length) return -1;
+    var i = lboundArr(arr, x);
+    if(i <= 0) return 0;
+    if(i >= arr.length) return arr.length - 1;
+    return (x - arr[i-1] <= arr[i] - x) ? i-1 : i;
+  }
+  function chartMinWindow(){ return Math.max(1e5, (cvFull || 1) / 1e6); }
+  function clampChart(){
+    var span = cvEnd - cvStart, full = cvFull || 1, lo = cvBase, hi = cvBase + full;
+    if(span > full){ span = full; }
+    if(span < chartMinWindow()){ span = Math.min(chartMinWindow(), full); }
+    if(cvStart < lo) cvStart = lo;
+    cvEnd = cvStart + span;
+    if(cvEnd > hi){ cvEnd = hi; cvStart = hi - span; if(cvStart < lo) cvStart = lo; }
+  }
+  var CHART_AXW = 34;       // width of each Y-axis gutter column (packed close together)
+  var CHART_MAX_AXES = 6;   // beyond this many visible lines, fall back to one shared axis
+  function drawChart(){
+    if(!chartData) return;
+    var cv = $("chart"); var dim = setup(cv, 360);
+    var ctx = dim.ctx, W = dim.w, H = dim.h;
+    ctx.clearRect(0, 0, W, H);
+
+    var vis = [];   // visible (not legend-hidden) lines, with their palette index
+    chartData.lines.forEach(function(L, i){ if(!L.hidden) vis.push({ L: L, i: i }); });
+    var norm = $("chart-norm").checked;
+    // normalize → each line scaled to its OWN range. We draw one colored axis per
+    // line when there aren't too many; beyond that the axis is just a 0–100% scale
+    // (each line's true range stays in the legend). Shared mode → one value axis.
+    var perLine = norm && vis.length > 0 && vis.length <= CHART_MAX_AXES;
+    var nAxes = perLine ? vis.length : 1;
+    var PADL = nAxes * CHART_AXW;
+    var padTop = 16, padBot = 26, plotH = H - padTop - padBot;   // room for top/bottom axis labels + X ticks
+    var plotL = PADL, plotW = W - PADL;
+    var t0 = cvStart, t1 = cvEnd, span = (t1 - t0) || 1;
+
+    // shared value range (only used when not normalizing)
+    var gmin = Infinity, gmax = -Infinity;
+    if(!norm){
+      vis.forEach(function(o){ if(o.L.min < gmin) gmin = o.L.min; if(o.L.max > gmax) gmax = o.L.max; });
+      if(gmin === Infinity){ gmin = 0; gmax = 1; }       // nothing visible
+      else if(!(gmax > gmin)){ gmin -= 1; gmax += 1; }   // single constant value
+    }
+
+    // horizontal Y gridlines
+    ctx.strokeStyle = "rgba(38,52,74,.5)"; ctx.lineWidth = 1;
+    for(var gy=0; gy<=4; gy++){ var yy = padTop + plotH*gy/4; ctx.beginPath(); ctx.moveTo(plotL, yy); ctx.lineTo(W, yy); ctx.stroke(); }
+    // vertical X gridlines + time tick labels. With a wall-clock reference the ticks
+    // land on round UTC times and read as clock; otherwise they're elapsed time with
+    // a unit (µs … d) that follows the tick step.
+    var abs = expAbsolute(), originNs = (experiment && experiment.timeline) ? experiment.timeline.startNs : 0n;
+    var spanSec = span/1e9, stepS = niceTimeStep(spanSec);
+    ctx.fillStyle = "rgba(116,132,154,.85)"; ctx.font = '10px ui-monospace,monospace'; ctx.textAlign = "center";
+    var ticks = [];   // {offNs, label}
+    if(abs){
+      var startSec = Number(originNs)/1e9;
+      var av0 = startSec + t0/1e9, av1 = startSec + t1/1e9;
+      for(var at = Math.ceil(av0/stepS)*stepS; at <= av1 + 1e-9; at += stepS){
+        var offNs = (at - startSec)*1e9;
+        ticks.push({ offNs: offNs, label: fmtClockTick(originNs + BigInt(Math.round(offNs)), stepS) });
+      }
+    } else {
+      for(var tk = Math.ceil(((t0 - cvBase)/1e9)/stepS)*stepS; tk <= (t1 - cvBase)/1e9 + 1e-9; tk += stepS){
+        ticks.push({ offNs: cvBase + tk*1e9, label: fmtElapsedNs(tk*1e9, stepS) });
+      }
+    }
+    ticks.forEach(function(tick){
+      var gx = plotL + (tick.offNs - t0)/span*plotW;
+      if(gx < plotL - 0.5) return;
+      ctx.strokeStyle = "rgba(38,52,74,.5)"; ctx.beginPath(); ctx.moveTo(gx, padTop); ctx.lineTo(gx, H - padBot); ctx.stroke();
+      ctx.fillStyle = "rgba(116,132,154,.85)"; ctx.fillText(tick.label, gx, H - 9);
+    });
+    ctx.textAlign = "start";
+
+    // the value lines
+    vis.forEach(function(o){
+      var L = o.L;
+      var lo = norm ? L.min : gmin, hi = norm ? L.max : gmax;
+      if(!(hi > lo)){ hi = lo + 1; }
+      var off = L.off, vals = L.vals, nN = off.length;
+      var a = lboundArr(off, t0); if(a > 0) a--;          // one sample before for continuity
+      var b = lboundArr(off, t1); if(b < nN) b++;
+      if(b - a < 1) return;
+      var step = Math.max(1, Math.floor((b - a) / (plotW * 2)));   // ~2 points per pixel
+      var brk = L.breakNs || Infinity;
+      ctx.strokeStyle = chartLineColor(o.i); ctx.lineWidth = 1; ctx.beginPath();
+      var started = false, prevOff = 0;
+      for(var i=a; i<b && i<nN; i+=step){
+        var v = vals[i]; if(v !== v) continue;             // skip NaN
+        var x = plotL + (off[i] - t0)/span*plotW;
+        var y = padTop + plotH*(1 - (v - lo)/(hi - lo));
+        // burst silence → lift the pen rather than connect across the empty stretch
+        if(!started || (off[i] - prevOff) > brk){ ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+        prevOff = off[i];
+      }
+      ctx.stroke();
+    });
+
+    // Y axes in the left gutter: a thin colored line per scale, with only the high
+    // value above its top and the low value below its bottom (centered on the line).
+    ctx.font = '9px ui-monospace,monospace'; ctx.textAlign = "center";
+    function drawYAxis(axisX, color, topLabel, botLabel){
+      ctx.strokeStyle = color; ctx.fillStyle = color;
+      ctx.beginPath(); ctx.moveTo(axisX, padTop); ctx.lineTo(axisX, padTop + plotH); ctx.stroke();
+      ctx.textBaseline = "alphabetic"; ctx.fillText(topLabel, axisX, padTop - 4);
+      ctx.textBaseline = "top";       ctx.fillText(botLabel, axisX, padTop + plotH + 4);
+    }
+    if(perLine){
+      vis.forEach(function(o, ax){
+        var lo = o.L.min, hi = o.L.max;
+        ctx.save(); ctx.globalAlpha = 0.9;
+        drawYAxis(ax*CHART_AXW + CHART_AXW/2, chartLineColor(o.i), fmtChartNum(hi), fmtChartNum(lo));
+        ctx.restore();
+      });
+    } else if(norm){
+      // too many lines to show each scale — a single 0–100% axis (ranges in legend)
+      drawYAxis(PADL/2, "rgba(160,176,198,.9)", "100%", "0%");
+    } else {
+      drawYAxis(PADL/2, "rgba(160,176,198,.9)", fmtChartNum(gmax), fmtChartNum(gmin));
+    }
+    ctx.textBaseline = "alphabetic"; ctx.textAlign = "start";
+
+    // drag-select zoom rectangle
+    if(cvSelRect){
+      var x0 = Math.max(plotL, Math.min(W, Math.min(cvSelRect.xa, cvSelRect.xb)));
+      var x1 = Math.max(plotL, Math.min(W, Math.max(cvSelRect.xa, cvSelRect.xb)));
+      ctx.fillStyle = "rgba(52,224,196,.12)"; ctx.fillRect(x0, padTop, x1 - x0, plotH);
+      ctx.strokeStyle = "rgba(52,224,196,.85)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0+0.5, padTop); ctx.lineTo(x0+0.5, padTop+plotH);
+      ctx.moveTo(x1-0.5, padTop); ctx.lineTo(x1-0.5, padTop+plotH); ctx.stroke();
+    }
+
+    chartGeom = { plotL: plotL, plotW: plotW, padTop: padTop, plotH: plotH };
+    if(abs){
+      $("chart-tstart").textContent = fmtClockFull(chartAbsNs(t0)) + " UTC";
+      $("chart-tmid").textContent = fmtClockTick(chartAbsNs((t0 + t1)/2), stepS);
+      $("chart-tend").textContent = fmtClockFull(chartAbsNs(t1)) + " UTC";
+    } else {
+      $("chart-tstart").textContent = fmtElapsedNs(t0 - cvBase, stepS);
+      $("chart-tmid").textContent = fmtElapsedNs((t0 + t1)/2 - cvBase, stepS);
+      $("chart-tend").textContent = fmtElapsedNs(t1 - cvBase, stepS);
+    }
   }
 
   // ---------- background summary scan ----------
@@ -3014,7 +3746,10 @@ time
         if(type === "burst"){ mOut = missing - smiss; dOut = drops - sdrops; }   // exclude silences
         else { mOut = missing; dOut = drops; }
       }
-      return { count: count, dtNs: dtNs, drops: dOut, missing: mOut, type: type };
+      // silenceNs (the inter-burst gap floor) lets the combined chart break the
+      // line across bursts instead of connecting them; only meaningful for burst
+      return { count: count, dtNs: dtNs, drops: dOut, missing: mOut, type: type,
+               silenceNs: (type === "burst" && isFinite(silenceNs)) ? silenceNs : null };
     }
     return { add: add, done: done };
   }
@@ -3061,9 +3796,9 @@ time
   function scanStream(stream, epoch){
     return new Promise(function(resolve){
       var acc = makeStatsAcc(experiment && experiment.timeline ? experiment.timeline.durationNs : 0);
-      var CHUNK = 8 * 1024 * 1024;
+      var CHUNK = CHUNK_BYTES;
       var binary = stream.kind === "bin";
-      var files = binary ? stream.group.map(function(h){ return h.file; }) : [stream.file];
+      var files = binary ? stream.group.map(function(h){ return h.file; }) : stream.files;
       var walker = binary ? makeHarpStatsWalker(acc) : makeCsvStatsWalker(acc);
       var fi = 0;
       function step(next){
@@ -3202,10 +3937,12 @@ time
     e.preventDefault();
     dispatchDrop(e);
   });
-  $("reload").addEventListener("click", function(){
+  // header nav: load another capture (opens the file picker) / back to devices
+  $("hdr-load").addEventListener("click", function(){
     fileInput.value = "";
     fileInput.click();
   });
+  $("hdr-back").addEventListener("click", goBackToDevices);
   // custom stream dropdown: toggle the popup, pick an option, close on outside click
   $("regsel-btn").addEventListener("click", function(e){
     e.stopPropagation();
@@ -3218,21 +3955,117 @@ time
     if(streamList && i !== streamIdx) loadStream(i);
   });
   window.addEventListener("click", function(){ $("regsel").classList.remove("open"); });
-  // back from a device's analysis view to the experiment device list
-  $("backexp").addEventListener("click", function(){
-    currentDevice = null; streamList = null; streamIdx = -1;
-    loaded.style.display = "none"; results.style.display = "none";
-    note.style.display = "none";
-    returnHome();
-  });
-  // close the experiment and return to the drop zone
-  $("expclose").addEventListener("click", function(){
-    teardownExperiment();
-    drop.style.display = "block";
+
+  // ---------- combined chart wiring ----------
+  $("chartnew").addEventListener("click", enterChartEdit);
+  $("chartcancel").addEventListener("click", exitChartEdit);
+  $("chartviz").addEventListener("click", visualizeChart);
+  $("chart-norm").addEventListener("change", drawChart);
+  // click a chart legend entry to show/hide that line
+  $("chart-legend").addEventListener("click", function(e){
+    var it = e.target.closest(".item[data-i]"); if(!it || !chartData) return;
+    var i = +it.getAttribute("data-i");
+    chartData.lines[i].hidden = !chartData.lines[i].hidden;
+    buildChartLegend();
+    drawChart();
   });
 
-  // apply settings
-  applyBtn.addEventListener("click", function(){
+  // chart canvas navigation (its own view window, independent of the trace):
+  // wheel = zoom at cursor, left-drag = zoom-select, right-drag = pan, dblclick = reset
+  (function(){
+    var cv = $("chart");
+    var cdraw = false;
+    function scheduleChart(){ if(cdraw) return; cdraw = true; requestAnimationFrame(function(){ cdraw = false; drawChart(); }); }
+    function plotFrac(clientX){
+      var rect = cv.getBoundingClientRect(), g = chartGeom || { plotL: 0, plotW: rect.width };
+      return Math.max(0, Math.min(1, (clientX - rect.left - g.plotL) / (g.plotW || 1)));
+    }
+    function canvasX(clientX){ return clientX - cv.getBoundingClientRect().left; }
+    var selecting = false, selStart = 0;
+    var panning = false, panX = 0, panS = 0, panE = 0;
+    cv.addEventListener("wheel", function(ev){
+      if(!chartData) return;
+      ev.preventDefault();
+      var span = cvEnd - cvStart, frac = plotFrac(ev.clientX), anchor = cvStart + frac*span;
+      var newSpan = span * (ev.deltaY > 0 ? 1.2 : 1/1.2);
+      if(newSpan > cvFull) newSpan = cvFull;
+      if(newSpan < chartMinWindow()) newSpan = chartMinWindow();
+      cvStart = anchor - frac*newSpan; cvEnd = cvStart + newSpan;
+      clampChart(); scheduleChart();
+    }, { passive: false });
+    cv.addEventListener("mousedown", function(ev){
+      if(!chartData) return;
+      if(ev.button === 2){ panning = true; panX = ev.clientX; panS = cvStart; panE = cvEnd; cv.style.cursor = "grabbing"; }
+      else if(ev.button === 0){ selecting = true; selStart = canvasX(ev.clientX); cvSelRect = null; }
+      else return;
+      ev.preventDefault();
+    });
+    cv.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });   // right-drag is pan
+    cv.addEventListener("dblclick", function(){
+      if(!chartData) return;
+      cvStart = cvBase; cvEnd = cvBase + (cvFull || 1); cvSelRect = null; scheduleChart();
+    });
+    // hover readout: the cursor's time + each visible line's value at that time
+    var ro = $("chart-ro");
+    function showChartReadout(clientX, clientY){
+      if(!chartData){ ro.style.opacity = 0; return; }
+      var rect = cv.getBoundingClientRect(), g = chartGeom || { plotL: 0, plotW: rect.width };
+      var x = clientX - rect.left;
+      if(x < g.plotL || x > g.plotL + g.plotW){ ro.style.opacity = 0; return; }
+      var frac = (x - g.plotL)/(g.plotW || 1), tOff = cvStart + frac*(cvEnd - cvStart);
+      var html = expAbsolute()
+        ? '<span class="lab">' + fmtClockFull(chartAbsNs(tOff)) + ' UTC</span>'
+        : '<span class="lab">t</span> ' + fmtElapsedNs(tOff - cvBase, niceTimeStep((cvEnd - cvStart)/1e9));
+      var tolTime = ((cvEnd - cvStart)/(g.plotW || 1)) * 6;   // ~6px → "value exists here"
+      chartData.lines.forEach(function(L, i){
+        if(L.hidden) return;
+        var idx = nearestIdx(L.off, tOff);
+        var v = (idx >= 0) ? L.vals[idx] : NaN;
+        var has = idx >= 0 && Math.abs(L.off[idx] - tOff) <= tolTime && v === v;
+        html += '<br><span style="color:' + chartLineColor(i) + '">●</span> ' + esc(L.label)
+              + ' = ' + (has ? fmtChartNum(v) : "—");
+      });
+      ro.innerHTML = html;
+      var wr = $("chart-wrap").getBoundingClientRect();
+      ro.style.left = (clientX - wr.left) + "px";
+      ro.style.top = Math.max(24, clientY - wr.top) + "px";
+      ro.style.opacity = 1;
+    }
+    cv.addEventListener("mousemove", function(ev){
+      if(panning || selecting){ ro.style.opacity = 0; return; }
+      showChartReadout(ev.clientX, ev.clientY);
+    });
+    cv.addEventListener("mouseleave", function(){ ro.style.opacity = 0; });
+    window.addEventListener("mousemove", function(ev){
+      if(!chartData) return;
+      if(panning){
+        var rect = cv.getBoundingClientRect(), g = chartGeom || { plotW: rect.width };
+        var dt = -((ev.clientX - panX)/(g.plotW || 1))*(panE - panS);
+        cvStart = panS + dt; cvEnd = panE + dt; clampChart(); scheduleChart();
+      } else if(selecting){
+        cvSelRect = { xa: selStart, xb: canvasX(ev.clientX) }; scheduleChart();
+      }
+    });
+    window.addEventListener("mouseup", function(ev){
+      if(panning){ panning = false; cv.style.cursor = "crosshair"; }
+      if(selecting){
+        selecting = false;
+        var g = chartGeom || { plotL: 0, plotW: cv.getBoundingClientRect().width };
+        var xb = canvasX(ev.clientX), xa = selStart;
+        cvSelRect = null;
+        if(Math.abs(xb - xa) > 4 && chartData){
+          function xToTime(x){ var f = Math.max(0, Math.min(1, (x - g.plotL)/(g.plotW || 1))); return cvStart + f*(cvEnd - cvStart); }
+          var ta = xToTime(Math.min(xa, xb)), tb = xToTime(Math.max(xa, xb));
+          var ns = tb - ta; if(ns < chartMinWindow()) ns = chartMinWindow();
+          var mid = (ta + tb)/2; cvStart = mid - ns/2; cvEnd = mid + ns/2; clampChart();
+        }
+        scheduleChart();
+      }
+    });
+  })();
+
+  // settings apply immediately on change (no Apply button)
+  function applySettings(){
     var iv = parseFloat(intervalIn.value);
     if(iv > 0){ intervalNs = iv*1e6; intervalIn.dataset.auto = "no"; }
     var tv = parseFloat(tolIn.value);
@@ -3242,7 +4075,7 @@ time
     closeNs = closeFactor * intervalNs;
     saveSettings();
     if(offsets.length >= 2) render();
-  });
+  }
   // auto-detect Δt from the loaded capture (and clear any saved pin)
   autoBtn.addEventListener("click", function(){
     if(offsets.length < 2) return;
@@ -3258,10 +4091,9 @@ time
     streamType = this.value;
     if(offsets.length >= 2) render();
   });
-  // chunk size only affects the next file load — persist it, no re-render needed
-  $("chunk").addEventListener("change", saveSettings);
   [intervalIn, tolIn, closeIn].forEach(function(el){
-    el.addEventListener("keydown", function(e){ if(e.key === "Enter") applyBtn.click(); });
+    el.addEventListener("change", applySettings);
+    el.addEventListener("keydown", function(e){ if(e.key === "Enter"){ applySettings(); el.blur(); } });
   });
 
   // reset zoom
@@ -3274,13 +4106,23 @@ time
   $("show-raw").addEventListener("change", function(){ showRaw = this.checked; saveSettings(); refreshView(); });
   $("show-anom").addEventListener("change", function(){ showAnom = this.checked; saveSettings(); refreshView(); });
   $("show-ts").addEventListener("change", function(){ showTs = this.checked; saveSettings(); refreshView(); });
+  // click a raw-channel legend entry to show/hide that channel
+  $("chan-legend").addEventListener("click", function(e){
+    var it = e.target.closest(".item[data-k]"); if(!it) return;
+    var k = +it.getAttribute("data-k");
+    chanHidden[k] = !chanHidden[k];
+    buildChannelLegend();
+    drawTrace();
+  });
 
   // redraw on resize
   var rt;
   window.addEventListener("resize", function(){
-    if(!stats) return;
     clearTimeout(rt);
-    rt = setTimeout(function(){ drawTrace(); drawHeat(); }, 120);
+    rt = setTimeout(function(){
+      if(chartData && $("chartview").style.display !== "none") drawChart();
+      if(stats){ drawTrace(); drawHeat(); }
+    }, 120);
   });
 
   // restore persisted settings and reflect them into the controls

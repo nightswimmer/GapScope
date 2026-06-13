@@ -10,7 +10,7 @@ function makeEl(){
   return {
     style: {}, dataset: {}, textContent: "", innerHTML: "", value: "",
     checked: false, disabled: false, width: 0, height: 0,
-    classList: { add(){}, remove(){} },
+    classList: { add(){}, remove(){}, toggle(){} },
     addEventListener(){}, appendChild(){}, click(){},
     getBoundingClientRect(){ return { left: 0, top: 0, width: 100, height: 100 }; },
     getContext(){ return new Proxy({}, { get: () => () => {} }); },
@@ -53,7 +53,8 @@ body += `
 ;global.__t = {
   parseHarpYaml, parseHarpSnapshot, readHarpHeader, makeStatsAcc, makeHarpStatsWalker,
   makeCsvStatsWalker, makeLineParser, splitByFolders, matchSchema, importSchemas,
-  buildStreams, largestStream, streamLabel, median, detectInterval, classifyStream, deviceSchemas,
+  buildStreams, largestStream, streamLabel, streamChannelNames, csvBaseName, groupCsvs, readCsvHeader,
+  median, detectInterval, classifyStream, deviceSchemas,
   G(){ return { firstNs, offsets, gaps, channelNames, channelCount, malformed }; },
   setScan(st){ scanState = st; },
   scanStream,
@@ -105,6 +106,20 @@ function check(label, cond, detail){
   check("register file not snapshot", hReg.snapshot === false && hReg.ok && hReg.address === 44, "addr " + hReg.address);
   check("13-byte file not snapshot", hTiny.snapshot === false, JSON.stringify({ok: hTiny.ok, addr: hTiny.address}));
 
+  // 3b. array arity (nEl) + value-line names from the schema (Behavior reg 44 =
+  // AnalogData, S16×3: AnalogInput0 / Encoder / AnalogInput1)
+  check("header nEl: AnalogData is 3 elements", hReg.nEl === 3, "nEl=" + hReg.nEl);
+  const arrStream = { kind: "bin", addr: 44, nEl: hReg.nEl, group: [hReg] };
+  const arrNames = t.streamChannelNames(arrStream, schema);
+  check("streamChannelNames: array positions from device.yml",
+    arrNames.length === 3 && arrNames[0] === "AnalogInput0" && arrNames[1] === "Encoder" && arrNames[2] === "AnalogInput1",
+    JSON.stringify(arrNames));
+  const scalarNames = t.streamChannelNames({ kind: "bin", addr: 250, nEl: 1, group: [hReg] }, schema);
+  check("streamChannelNames: scalar w/o schema reg → reg<addr> name", scalarNames.length === 1 && scalarNames[0] === "reg250", JSON.stringify(scalarNames));
+  const noSchemaNames = t.streamChannelNames({ kind: "bin", addr: 7, nEl: 2, group: [hReg] }, null);
+  check("streamChannelNames: no schema → reg<addr>_<i> fallback",
+    noSchemaNames[0] === "reg7_0" && noSchemaNames[1] === "reg7_1", JSON.stringify(noSchemaNames));
+
   // 4. snapshot walk: inventory + WhoAmI
   const snap = await t.parseHarpSnapshot(snapFile);
   check("snapshot registers", snap && snap.registers.length === 111, snap && snap.registers.length);
@@ -136,9 +151,26 @@ function check(label, cond, detail){
   const csvPath = path.join(EXP, "Center", "Center_2026-06-12T01-00-00.csv");
   const csvLines = fs.readFileSync(csvPath, "utf8").split(/\r?\n/).filter(l => l.trim());
   const csv = fileOf(csvPath);
-  const stc = await t.scanStream({ kind: "csv", file: csv }, 1);
+  const stc = await t.scanStream({ kind: "csv", files: [csv] }, 1);
   check("csv stats count", stc && stc.count === csvLines.length - 1, stc && stc.count + " vs " + (csvLines.length - 1) + " data rows");
   check("csv Δt ≈ 25 ms (40 Hz)", stc && Math.abs(stc.dtNs - 25e6) < 1e6, stc && stc.dtNs);
+
+  // 6c. CSV chunk combining: base-name grouping + header peek + column names
+  check("csvBaseName strips trailing timestamp", t.csvBaseName("East_1904-01-06T04-00-00.csv") === "East", t.csvBaseName("East_1904-01-06T04-00-00.csv"));
+  check("csvBaseName keeps role suffix", t.csvBaseName("Environment_EnvironmentState_2026-06-12T010000Z.csv") === "Environment_EnvironmentState",
+        t.csvBaseName("Environment_EnvironmentState_2026-06-12T010000Z.csv"));
+  const chunkFiles = ["East_1904-01-06T06-00-00.csv", "East_1904-01-06T04-00-00.csv", "East_1904-01-06T05-00-00.csv"]
+    .map(n => new NodeFile(Buffer.from("x"), n));
+  const grouped = t.groupCsvs(chunkFiles);
+  check("groupCsvs: 3 chunks → 1 base, time-ordered", grouped.length === 1 && grouped[0].base === "East"
+        && grouped[0].files.map(f => f.name)[0].endsWith("04-00-00.csv")
+        && grouped[0].files.map(f => f.name)[2].endsWith("06-00-00.csv"),
+        JSON.stringify(grouped.map(g => g.base + ":" + g.files.length)));
+  const hd = await t.readCsvHeader(csv);
+  check("readCsvHeader: data columns named from header", hd.nCols >= 1 && hd.cols.every(c => c && !/^col\d/.test(c)),
+        JSON.stringify(hd.cols));
+  const csvNames = t.streamChannelNames({ kind: "csv", nEl: hd.nCols, cols: hd.cols }, null);
+  check("streamChannelNames: CSV columns = header names", csvNames.length === hd.nCols && csvNames[0] === hd.cols[0], JSON.stringify(csvNames));
 
   // 6b. tick-aware Δt estimate (median refined by trimmed mean)
   {
