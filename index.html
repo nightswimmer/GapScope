@@ -39,7 +39,7 @@
     line-height:1.5;
     -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 80px}
+  .wrap{margin:0 auto;padding:28px 12px 80px}
 
   /* nameplate */
   .head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
@@ -65,7 +65,13 @@
     font-family:var(--mono);font-size:14px;padding:8px 10px;border-radius:6px;outline:none;
   }
   .ctl input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,168,255,.18)}
-  .ctl .unit{font-family:var(--mono);font-size:12px;color:var(--text-dim)}
+  .ctl select{
+    width:128px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    font-family:var(--mono);font-size:13px;padding:8px 10px;border-radius:6px;outline:none;cursor:pointer;
+  }
+  .ctl select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(74,168,255,.18)}
+  .ctl .auto-class{font-family:var(--mono);font-size:10px;color:var(--text-faint);letter-spacing:.04em}
+  .ctl .auto-class b{color:var(--text-dim);font-weight:600}
   button.apply{
     background:var(--phosphor-dim);border:1px solid rgba(52,224,196,.4);color:var(--phosphor);
     font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
@@ -109,8 +115,21 @@
   .loaded .meta{color:var(--text-dim);font-size:12px}
   .loaded a.reload{color:var(--accent);cursor:pointer;font-size:12px;text-decoration:none;border-bottom:1px solid transparent}
   .loaded a.reload:hover{border-bottom-color:var(--accent)}
-  .loaded .regsel{background:var(--panel);color:var(--text);border:1px solid var(--line-bright);border-radius:6px;
-    padding:4px 8px;font-family:var(--mono);font-size:12px;cursor:pointer}
+  .loaded .regsel{position:relative;font-family:var(--mono);font-size:12px}
+  .loaded .regsel-btn{display:flex;align-items:center;gap:7px;background:var(--panel);color:var(--text);
+    border:1px solid var(--line-bright);border-radius:6px;padding:4px 9px;font:inherit;cursor:pointer;max-width:360px}
+  .loaded .regsel-btn .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .loaded .regsel-btn .caret{margin-left:auto;color:var(--text-faint);font-size:10px}
+  .loaded .regsel-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:30;min-width:100%;
+    max-height:60vh;overflow:auto;background:var(--panel);border:1px solid var(--line-bright);border-radius:8px;
+    padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  .loaded .regsel.open .regsel-menu{display:block}
+  .loaded .regsel.open .caret{color:var(--accent)}
+  .loaded .regopt{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;cursor:pointer;color:var(--text)}
+  .loaded .regopt:hover{background:var(--bg-grid)}
+  .loaded .regopt.sel{background:var(--phosphor-dim)}
+  .loaded .regopt .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .loaded .regopt .stype{flex:none}
   .drop a.folderlink{color:var(--accent);cursor:pointer;border-bottom:1px solid transparent}
   .drop a.folderlink:hover{border-bottom-color:var(--accent)}
 
@@ -136,7 +155,7 @@
   .explist .exphead a.reload:hover{border-bottom-color:var(--accent)}
   .explist .scanline{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.06em;
     margin:10px 2px 0;min-height:16px}
-  .devgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-top:12px}
+  .devgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(512px,1fr));gap:12px;margin-top:12px}
   .devcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
     cursor:pointer;transition:border-color .15s}
   .devcard:hover{border-color:var(--accent)}
@@ -148,11 +167,18 @@
     border:1px solid var(--line-bright);border-radius:5px;padding:2px 7px;color:var(--text-dim);white-space:nowrap}
   .devcard .devbadge.known{color:var(--phosphor);border-color:rgba(52,224,196,.4);background:var(--phosphor-dim)}
   .devcard .devinfo{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:8px}
+  .stype{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--text-faint);border:1px solid var(--line);border-radius:4px;padding:1px 5px;white-space:nowrap}
+  .stype.constant{color:var(--phosphor);border-color:rgba(52,224,196,.35)}
+  .stype.burst{color:var(--accent);border-color:rgba(74,168,255,.4)}
+  .stype.pontual{color:var(--text-dim)}
   .devcard table{font-size:12px}
   .devcard thead th{padding:6px 8px}
   .devcard tbody td{padding:5px 8px;border-bottom:1px solid var(--bg-grid)}
-  .devcard tbody tr:hover{background:transparent}
-  .devcard td:first-child{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .devcard tbody tr[data-i]{cursor:pointer}
+  .devcard tbody tr[data-i]:hover{background:var(--bg-grid)}
+  .devcard tbody tr[data-i]:hover td:first-child{color:var(--accent)}
+  .devcard td:first-child{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
   .devcard td.drops{color:var(--drop)}
   .devcard td.ok{color:var(--phosphor)}
   .drop .schemastat{margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--text-faint)}
@@ -293,6 +319,18 @@
         </div>
       </div>
       <div class="ctl">
+        <label for="streamtype">Stream type</label>
+        <div class="row">
+          <select id="streamtype" title="How this stream's timing is interpreted. Auto classifies it; pick a value to override.&#10;pontual: sporadic arrivals — no Δt / missing&#10;constant: one regular cadence — count all dropouts&#10;burst: regular runs split by silences — missing counted only within runs">
+            <option value="auto">auto</option>
+            <option value="pontual">pontual</option>
+            <option value="constant">constant</option>
+            <option value="burst">burst</option>
+          </select>
+        </div>
+        <div class="auto-class" id="autoclass"></div>
+      </div>
+      <div class="ctl">
         <label for="chunk">Read chunk</label>
         <div class="row">
           <input id="chunk" type="number" step="1" min="1" value="8" title="Byte-slice size used when streaming the file in (applies to the next load)">
@@ -334,7 +372,10 @@ time
     <a class="reload" id="backexp" style="display:none" title="Back to the experiment device list">← devices</a>
     <div class="file"><span class="dot"></span><span class="name" id="fname"></span></div>
     <div class="meta" id="fmeta"></div>
-    <select class="regsel" id="regsel" style="display:none" title="Choose which stream of this selection to analyze"></select>
+    <div class="regsel" id="regsel" style="display:none" title="Choose which stream of this selection to analyze">
+      <button type="button" class="regsel-btn" id="regsel-btn"></button>
+      <div class="regsel-menu" id="regsel-menu"></div>
+    </div>
     <a class="reload" id="reload">Load another capture</a>
   </div>
 
@@ -487,6 +528,17 @@ time
   var tightEvents = [];      // {start, gapNs} for spacings below closeNs
   var eventList = [];        // merged anomalies sorted by time: {t, kind, gapNs, missing}
   var eventTimes = [];       // parallel array of t for binary search
+  var silenceEvents = [];    // {start, end, gapNs} inter-burst silences (burst streams only)
+  var streamType = "auto";   // classification override: "auto"|"pontual"|"constant"|"burst" (per-stream, reset on load)
+  var streamClass = "constant"; // resolved type after analyze(): the actual model applied
+  var autoClass = "constant";   // what classifyStream decided, regardless of override
+  // Experiment timeline: every device runs concurrently, so a single stream is
+  // shown/classified against the whole experiment span. refOriginNs is the
+  // absolute (epoch-shifted) ns the offsets are anchored to (the experiment's
+  // earliest start); timelineNs is the full span in ns. Both null/own-span when
+  // there's no experiment to reference.
+  var refOriginNs = null;    // BigInt | null — origin offsets are measured from
+  var timelineNs = 0;        // Number ns — full view/classification span
 
   // ---------- view window (zoom) ----------
   var viewStart = 0, viewEnd = 0;   // visible time window, ns offsets
@@ -506,6 +558,7 @@ time
       results = $("results"), note = $("note"),
       progress = $("progress"), pfill = $("pfill"), ptxt = $("ptxt"),
       intervalIn = $("interval"), tolIn = $("tol"), closeIn = $("close"),
+      typeSel = $("streamtype"), autoClassEl = $("autoclass"),
       applyBtn = $("apply"), autoBtn = $("autodetect");
 
   // ---------- parsing ----------
@@ -539,6 +592,9 @@ time
   }
 
   function resetData(){
+    // anchor this load's offsets to the experiment timeline when one exists, so
+    // a single stream is placed on the shared experiment clock (else own span)
+    refOriginNs = (experiment && experiment.timeline) ? experiment.timeline.startNs : null;
     firstNs = 0n; offsets = []; gaps = [];
     channels = []; channelNames = []; channelCount = 0; chMin = []; chMax = [];
     malformed = 0; outOfOrder = 0; duplicates = 0;
@@ -551,7 +607,7 @@ time
   // Per-line parser. Holds parse state (header detection, ordering) across
   // chunk boundaries so the file can be fed one line at a time as it streams in.
   function makeLineParser(){
-    var started = false, prev = null, headerFields = null, baseNs = 0n;
+    var started = false, prev = null, headerFields = null, shiftNs = 0n;
     function feed(raw){
       if(!raw) return;
       var parts = raw.split(",");
@@ -563,12 +619,15 @@ time
         malformed++; return;
       }
       if(!started){
-        started = true; baseNs = ts;
+        started = true;
         // a seconds column counting from the Harp epoch (1904) — first value
         // past ~1999 in 1904 terms, i.e. past ~2065 as a Unix time — is shifted
         // to the Unix epoch so wall-clock mode reads right (the same rule the
-        // binary parser applies). Offsets stay relative to the raw base.
-        firstNs = ts > 3000000000000000000n ? ts - HARP_EPOCH_OFFSET_NS : ts;
+        // binary parser applies). The shift is constant for the file, so offsets
+        // computed from the shifted timestamps match the old raw-based offsets.
+        shiftNs = ts > 3000000000000000000n ? -HARP_EPOCH_OFFSET_NS : 0n;
+        // anchor to the experiment origin when set, else to this file's first sample
+        firstNs = (refOriginNs !== null) ? refOriginNs : (ts + shiftNs);
         channelCount = Math.max(0, parts.length - 1);
         for(var ci=0; ci<channelCount; ci++){
           channels[ci] = [];
@@ -577,7 +636,7 @@ time
           channelNames[ci] = nm || ("ch"+ci);
         }
       }
-      var off = Number(ts - baseNs);
+      var off = Number((ts + shiftNs) - firstNs);
       if(prev !== null){
         var g = off - prev;
         if(g < 0){ outOfOrder++; }
@@ -721,7 +780,9 @@ time
         var sec = view.getUint32(i+5, true);
         var micro = view.getUint16(i+9, true);
         var tsNs = BigInt(sec)*1000000000n + BigInt(micro)*32000n + epochAdd;
-        if(prev === null && offsets.length === 0) firstNs = tsNs;
+        // anchor offsets to the experiment origin when one is set, else to this
+        // stream's own first sample (offsets[0] = 0)
+        if(prev === null && offsets.length === 0) firstNs = (refOriginNs !== null) ? refOriginNs : tsNs;
         var off = Number(tsNs - firstNs);
         if(prev !== null){
           var g = off - prev;
@@ -802,7 +863,7 @@ time
         // addresses/strides — peek at the second message to tell them apart
         var addr = dv.getUint8(2), stride = dv.getUint8(1) + 2, snapshot = false;
         if(stride >= 6 && b.length >= stride + 3 && dv.getUint8(stride + 2) !== addr) snapshot = true;
-        resolve({ file: file, address: addr, firstTs: ts, size: file.size || 0, ok: ok || snapshot, snapshot: snapshot });
+        resolve({ file: file, address: addr, firstTs: ts, stride: stride, hasTs: hasTs, size: file.size || 0, ok: ok || snapshot, snapshot: snapshot });
       };
       fr.readAsArrayBuffer(file.slice(0, 1024));
     });
@@ -836,6 +897,98 @@ time
         resolve(regs.length ? { whoAmI: whoAmI, registers: regs } : null);
       };
       fr.readAsArrayBuffer(file);
+    });
+  }
+
+  // ---------- experiment timeline bounds ----------
+  // The same 1904→1970 shift the parsers apply, so timeline bounds live in the
+  // same (epoch-shifted) ns space the offsets are anchored to.
+  function shiftTsNs(ts){
+    return (ts !== null && ts > 3000000000000000000n) ? ts - HARP_EPOCH_OFFSET_NS : ts;
+  }
+  // Decode the timestamp of the LAST message in a .bin by reading just its tail
+  // (Harp files are message-aligned at `stride`, so the final message is the
+  // last whole stride). Returns raw (un-shifted) ns, or null.
+  function readHarpLastTs(file, stride){
+    return new Promise(function(resolve){
+      var size = file.size || 0;
+      if(!(stride >= 12) || size < stride){ resolve(null); return; }
+      var fr = new FileReader();
+      fr.onerror = function(){ resolve(null); };
+      fr.onload = function(){
+        var b = new Uint8Array(fr.result);
+        if(b.length < 11){ resolve(null); return; }
+        var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+        var msgs = Math.floor(b.length / stride);
+        var off = (msgs - 1) * stride;     // last whole message in the tail slice
+        resolve(BigInt(dv.getUint32(off+5, true))*1000000000n + BigInt(dv.getUint16(off+9, true))*32000n);
+      };
+      // read a few strides from the end (covers any partial trailing bytes)
+      var want = Math.min(size, stride * 4);
+      fr.readAsArrayBuffer(file.slice(size - want, size));
+    });
+  }
+  // First and last parseable timestamps of a CSV, from its head and tail slices
+  // (raw ns). Mirrors makeLineParser's first-field parse. Returns {t0,t1}|null.
+  function readCsvBounds(file){
+    return new Promise(function(resolve){
+      var size = file.size || 0;
+      if(!size){ resolve(null); return; }
+      var SLICE = Math.min(size, 65536);
+      function firstField(line){ var c = line.indexOf(","); return (c === -1 ? line : line.slice(0,c)).trim(); }
+      function scan(text, fromEnd){
+        var lines = text.split(/\r?\n/);
+        for(var k=0;k<lines.length;k++){
+          var line = fromEnd ? lines[lines.length-1-k] : lines[k];
+          var f = firstField(line || ""); if(!f) continue;
+          var ts = parseTsNs(f); if(ts !== null) return ts;
+        }
+        return null;
+      }
+      var fr1 = new FileReader();
+      fr1.onerror = function(){ resolve(null); };
+      fr1.onload = function(){
+        var t0 = scan(new TextDecoder("utf-8").decode(new Uint8Array(fr1.result)), false);
+        if(t0 === null){ resolve(null); return; }
+        var fr2 = new FileReader();
+        fr2.onerror = function(){ resolve({ t0:t0, t1:t0 }); };
+        fr2.onload = function(){
+          var t1 = scan(new TextDecoder("utf-8").decode(new Uint8Array(fr2.result)), true);
+          resolve({ t0:t0, t1:(t1 !== null ? t1 : t0) });
+        };
+        fr2.readAsArrayBuffer(file.slice(size - SLICE, size));
+      };
+      fr1.readAsArrayBuffer(file.slice(0, SLICE));
+    });
+  }
+  // First/last absolute (shifted) timestamps of one stream.
+  function streamTimeBounds(stream){
+    if(stream.kind === "csv"){
+      return readCsvBounds(stream.file).then(function(b){
+        return b ? { t0: shiftTsNs(b.t0), t1: shiftTsNs(b.t1) } : null;
+      });
+    }
+    var g = stream.group, last = g[g.length-1];
+    var t0 = shiftTsNs(g[0].firstTs);
+    return readHarpLastTs(last.file, last.stride).then(function(lastTs){
+      var t1 = shiftTsNs(lastTs !== null ? lastTs : last.firstTs);
+      return (t0 !== null && t1 !== null) ? { t0: t0, t1: t1 } : null;
+    });
+  }
+  // Shared experiment timeline = earliest start → latest end across all streams.
+  function computeTimeline(devices){
+    var streams = [];
+    devices.forEach(function(d){ d.streams.forEach(function(s){ streams.push(s); }); });
+    if(!streams.length) return Promise.resolve(null);
+    return Promise.all(streams.map(streamTimeBounds)).then(function(bounds){
+      var lo = null, hi = null;
+      bounds.forEach(function(b){
+        if(!b) return;
+        if(b.t0 !== null && (lo === null || b.t0 < lo)) lo = b.t0;
+        if(b.t1 !== null && (hi === null || b.t1 > hi)) hi = b.t1;
+      });
+      if(lo === null || hi === null || hi <= lo) return null;
+      return { startNs: lo, endNs: hi, durationNs: Number(hi - lo) };
     });
   }
 
@@ -1096,21 +1249,92 @@ time
     return k ? sum / k : med;
   }
 
+  // ---------- stream-type classification ----------
+  // Decide which timing model applies to a register's stream, measured against
+  // the shared EXPERIMENT timeline (every device runs concurrently, so the
+  // longest-running stream sets the reference span all the others are judged on):
+  //   pontual  — sporadic arrivals, no dominant cadence; Δt and "missing" are
+  //              meaningless, so we count neither.
+  //   constant — a regular cadence covering most of the experiment (>50%); every
+  //              gap above tolerance×Δt is a dropout whose missing are counted.
+  //   burst    — a regular cadence covering only part of the experiment (≤50%):
+  //              one or more runs surrounded by silence. Missing is counted only
+  //              WITHIN runs; inter-burst silences (large gaps in the data) are
+  //              excluded, and the empty timeline before/after the data isn't a
+  //              gap at all.
+  var CLASS_P_MIN     = 0.65;  // min fraction of gaps on the cadence to be "regular" at all
+  var CLASS_COVER_MIN = 0.5;   // active fraction (n·Δt / timeline) above which a stream is constant
+  var CLASS_JUMP      = 8;     // ratio of the bimodal jump that marks an in-data silence band
+  var CLASS_BREAK_MULT= 12;    // an in-data silence must be at least this × Δt (sanity floor)
+
+  // Cadence test, independent of the experiment span: is there a dominant Δt,
+  // and where (if anywhere) does an in-data silence band begin? Returns
+  // {regular, onBeat, silenceNs}. silenceNs is Infinity when the large gaps form
+  // a continuum (ordinary dropouts) rather than a clearly separated silence band.
+  function streamRegularity(gaps, dt, tol){
+    var out = { regular:false, onBeat:0, silenceNs:Infinity }, i;
+    if(!(dt > 0) || gaps.length < 1) return out;
+    var lo = dt/tol, hi = dt*tol, onBeat = 0;
+    for(i=0;i<gaps.length;i++){ var g = gaps[i]; if(g >= lo && g <= hi) onBeat++; }
+    out.onBeat = onBeat / gaps.length;
+    out.regular = out.onBeat >= CLASS_P_MIN;
+    // bimodal split: walk the above-cadence gaps ascending from the top of the
+    // cadence band; the largest consecutive ratio jump (≥ CLASS_JUMP, above the
+    // sanity floor) marks where inter-burst silences begin.
+    var over = [];
+    for(i=0;i<gaps.length;i++){ if(gaps[i] > hi) over.push(gaps[i]); }
+    over.sort(function(a,b){ return a-b; });
+    var seq = [hi].concat(over), best = 1, idx = -1;
+    for(i=1;i<seq.length;i++){ var r = seq[i]/seq[i-1]; if(r > best){ best = r; idx = i; } }
+    if(best >= CLASS_JUMP && idx >= 1 && seq[idx] >= CLASS_BREAK_MULT*dt) out.silenceNs = seq[idx];
+    return out;
+  }
+
+  // Full classification: cadence gate, then coverage of the experiment timeline.
+  // n = message count, spanNs = the experiment timeline duration (or this
+  // stream's own span when there's no experiment to reference).
+  function classifyStream(gaps, dt, tol, n, spanNs){
+    var r = streamRegularity(gaps, dt, tol);
+    var res = { type:"pontual", onBeat:r.onBeat, silenceNs:r.silenceNs, coverage:0 };
+    if(!r.regular || !(dt > 0) || n < 2) return res;
+    res.coverage = spanNs > 0 ? (n * dt) / spanNs : 1;
+    res.type = res.coverage > CLASS_COVER_MIN ? "constant" : "burst";
+    return res;
+  }
+
   // ---------- analysis ----------
   function analyze(){
     var n = offsets.length;
-    var durationNs = n ? offsets[n-1] : 0;
-    var expected = intervalNs > 0 ? Math.round(durationNs/intervalNs) + 1 : n;
-    var dropped = Math.max(0, expected - n);
+    // offsets are anchored to the experiment timeline, so the data may sit
+    // anywhere inside [0, timelineNs]: dataStart/dataEnd bound the actual
+    // samples; spanNs is the full experiment timeline the view shows.
+    var dataStart = n ? offsets[0] : 0;
+    var dataEnd = n ? offsets[n-1] : 0;
+    var dataSpanNs = dataEnd - dataStart;
+    var spanNs = timelineNs > 0 ? timelineNs : dataEnd;
     var threshold = intervalNs * tolerance;
+
+    // classify against the experiment span (auto), honoring a manual override
+    var cl = classifyStream(gaps, intervalNs, tolerance, n, spanNs);
+    autoClass = cl.type;
+    streamClass = (streamType === "auto") ? cl.type : streamType;
+    var pontual = (streamClass === "pontual");
+    // inter-burst silences are excluded from missing only for burst streams; the
+    // threshold is the bimodal split (Infinity = no in-data silence band)
+    var silenceNs = (streamClass === "burst") ? cl.silenceNs : Infinity;
 
     gapEvents = [];
     tightEvents = [];
-    var worst = 0, missSum = 0, tightest = Infinity;
+    silenceEvents = [];
+    var worst = 0, missSum = 0, tightest = Infinity, runs = 1;
     for(var i=0;i<gaps.length;i++){
       var g = gaps[i];
-      if(g > worst) worst = g;
-      if(g > threshold){
+      if(g >= silenceNs){
+        // inter-burst silence: a run boundary, not a dropout — no missing counted
+        silenceEvents.push({ start: offsets[i], end: offsets[i+1], gapNs: g });
+        runs++;
+      } else if(!pontual && g > threshold){
+        if(g > worst) worst = g;   // worst dropout excludes silences
         var miss = Math.max(1, Math.round(g/intervalNs) - 1);
         missSum += miss;
         gapEvents.push({ start: offsets[i], end: offsets[i+1], gapNs: g, missing: miss });
@@ -1122,6 +1346,13 @@ time
     }
     if(!isFinite(tightest)) tightest = 0;
 
+    // expected/dropped depend on the model: pontual counts nothing; burst counts
+    // only the within-run misses; constant compares its active span to Δt.
+    var expected, dropped;
+    if(pontual){ expected = n; dropped = 0; }
+    else if(streamClass === "burst"){ expected = n + missSum; dropped = missSum; }
+    else { expected = intervalNs > 0 ? Math.round(dataSpanNs/intervalNs) + 1 : n; dropped = Math.max(0, expected - n); }
+
     // merged, time-sorted anomaly list for inter-event measurement on hover
     eventList = [];
     for(var a=0;a<gapEvents.length;a++) eventList.push({ t: gapEvents[a].start, kind:"drop", gapNs: gapEvents[a].gapNs, missing: gapEvents[a].missing });
@@ -1129,11 +1360,15 @@ time
     eventList.sort(function(p,q){ return p.t - q.t; });
     eventTimes = eventList.map(function(e){ return e.t; });
 
-    var rate = durationNs > 0 ? n / (durationNs/1e9) : 0;
+    // rate is over the stream's active span, not the whole timeline
+    var rate = dataSpanNs > 0 ? n / (dataSpanNs/1e9) : 0;
     stats = {
-      n: n, durationNs: durationNs, expected: expected, dropped: dropped,
+      n: n, durationNs: spanNs, dataSpanNs: dataSpanNs, dataStart: dataStart, dataEnd: dataEnd,
+      expected: expected, dropped: dropped,
       events: gapEvents.length, worst: worst, rate: rate, missSum: missSum,
-      tight: tightEvents.length, tightest: tightest
+      tight: tightEvents.length, tightest: tightest,
+      type: streamClass, runs: runs, silences: silenceEvents.length, silenceNs: silenceNs,
+      coverage: cl.coverage
     };
   }
 
@@ -1545,6 +1780,10 @@ time
       ctx.beginPath(); ctx.moveTo(gx, 8); ctx.lineTo(gx, h-10); ctx.stroke();
     }
 
+    // inter-burst silences: shade the idle regions of a burst stream so the
+    // runs read as distinct blocks (drawn under everything else)
+    if(showAnom && silenceEvents.length) drawSilenceBands(ctx, w, h, t0, t1, span);
+
     // sample timestamps: one vertical line per occupied pixel column, drawn
     // under the anomaly/raw layers so the brighter error marks sit on top
     if(showTs) drawAllTimestamps(ctx, w, h, col);
@@ -1563,6 +1802,15 @@ time
       ctx.fillText(msg, w/2, h/2); ctx.textAlign = "start";
     }
 
+    // when the visible window falls entirely outside the stream's data (the
+    // empty timeline before/after a burst, or inside a silence), say so
+    if(offsets.length && lowerBound(t1) - lowerBound(t0) === 0 &&
+       (t1 <= offsets[0] || t0 >= offsets[offsets.length-1] || silenceEvents.length)){
+      ctx.font = '11px ui-monospace,monospace';
+      ctx.fillStyle = "rgba(116,132,154,.6)"; ctx.textAlign = "center";
+      ctx.fillText("— no data in this time range —", w/2, 12); ctx.textAlign = "start";
+    }
+
     // axis labels reflect the visible window (always)
     var dp = spanSec < 1 ? 4 : (spanSec < 10 ? 3 : 2);
     $("t-start").textContent = (t0/1e9).toFixed(dp)+" s  ·  "+clockInline(t0);
@@ -1570,6 +1818,24 @@ time
     $("t-end").textContent = (t1/1e9).toFixed(dp)+" s  ·  "+clockInline(t1);
 
     traceData = { col: col, w: w, baseY: baseY, topY: 14, threshold: threshold, raw: rawOn };
+  }
+
+  // inter-burst silences: a neutral shaded band over each idle stretch, with a
+  // hairline at each edge so even a sub-pixel-wide silence stays visible.
+  function drawSilenceBands(ctx, w, h, t0, t1, span){
+    ctx.save();
+    for(var i=0;i<silenceEvents.length;i++){
+      var s = silenceEvents[i];
+      if(s.end <= t0 || s.start >= t1) continue;   // off-screen
+      var xa = ((s.start - t0)/span)*w, xb = ((s.end - t0)/span)*w;
+      if(xa < 0) xa = 0; if(xb > w) xb = w;
+      var wseg = Math.max(1, xb - xa);
+      ctx.fillStyle = "rgba(96,112,140,.16)"; ctx.fillRect(xa, 6, wseg, h-16);
+      ctx.strokeStyle = "rgba(120,140,170,.55)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(xa+0.5, 6); ctx.lineTo(xa+0.5, h-10);
+      ctx.moveTo(xa+wseg-0.5, 6); ctx.lineTo(xa+wseg-0.5, h-10); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // current bipolar anomaly view: baseline + up(missing)/down(too-close) spikes
@@ -1752,11 +2018,19 @@ time
     }
     var expPerCol = (full / col.cols) / intervalNs;
     var threshold = intervalNs * tolerance;
+    var pontual = (stats.type === "pontual");
+    var silenceNs = stats.silenceNs;
     for(var c=0;c<col.cols;c++){
-      // worst-case colouring: the slice takes the colour of its most severe
-      // dropout, so a single bad gap lights up even amid many good samples
+      // no-data slices (outside the stream's span, or inside an inter-burst
+      // silence) read as a dark band, distinct from continuous coverage.
+      // Otherwise worst-case colouring: the slice takes the colour of its most
+      // severe dropout. Pontual: no dropout concept — covered slices stay phosphor.
       var worst = col.maxGap[c];
-      if(worst > threshold){
+      if(col.present[c] === 0){
+        ctx.fillStyle = "rgb(22,28,40)";     // no data on the timeline here
+      } else if(!pontual && isFinite(silenceNs) && worst >= silenceNs){
+        ctx.fillStyle = "rgb(96,112,140)";   // inter-burst silence (neutral)
+      } else if(!pontual && worst > threshold){
         var miss = Math.max(1, Math.round(worst/intervalNs)-1);
         ctx.fillStyle = spikeColor(miss);
       } else {
@@ -1802,19 +2076,35 @@ time
     intervalIn.value = (intervalNs/1e6).toPrecision(6).replace(/\.?0+$/,"");
     tolIn.value = tolerance;
     closeIn.value = closeFactor;
+    var pontual = (stats.type === "pontual"), burst = (stats.type === "burst");
+    // reflect the resolved type + show what auto decided (and whether overridden)
+    typeSel.value = streamType;
+    autoClassEl.innerHTML = (streamType === "auto")
+      ? 'detected <b>' + autoClass + '</b>'
+      : 'override · auto says <b>' + autoClass + '</b>';
 
-    // stats
+    // stats — Δt/missing are meaningless for pontual streams, so drop them
     var lossPct = stats.expected > 0 ? (stats.dropped/stats.expected*100) : 0;
     var sg = $("statgrid");
     var cards = [
       ["Samples", fmtInt(stats.n), "", ""],
-      ["Duration", fmtDuration(stats.durationNs), "", ""],
-      ["Expected", fmtInt(stats.expected), "", ""],
-      ["Missing", fmtInt(stats.dropped), lossPct.toFixed(2)+"%", stats.dropped>0?"bad":"good"],
-      ["Drop events", fmtInt(stats.events), "", stats.events>0?"bad":"good"],
-      ["Too close", fmtInt(stats.tight), stats.tight>0 ? "min "+fmtGap(stats.tightest) : "", stats.tight>0?"tight":"good"],
-      ["Mean rate", stats.rate.toFixed(1), "Hz", ""]
+      ["Duration", fmtDuration(stats.durationNs), "", ""]
     ];
+    var coverPct = (stats.coverage*100);
+    if(pontual){
+      cards.push(["Typical gap", fmtGap(intervalNs), "median", ""]);
+    } else {
+      if(burst){
+        cards.push(["Coverage", coverPct.toFixed(1), "% of timeline", ""]);
+        cards.push(["Active", fmtDuration(stats.dataSpanNs), "", ""]);
+      }
+      cards.push(["Expected", fmtInt(stats.expected), burst?"in bursts":"", ""]);
+      cards.push(["Missing", fmtInt(stats.dropped), lossPct.toFixed(2)+"%", stats.dropped>0?"bad":"good"]);
+      cards.push(["Drop events", fmtInt(stats.events), "", stats.events>0?"bad":"good"]);
+      if(burst && stats.silences) cards.push(["Bursts", fmtInt(stats.runs), stats.silences+" silence"+(stats.silences===1?"":"s"), ""]);
+    }
+    cards.push(["Too close", fmtInt(stats.tight), stats.tight>0 ? "min "+fmtGap(stats.tightest) : "", stats.tight>0?"tight":"good"]);
+    cards.push(["Mean rate", stats.rate.toFixed(1), "Hz", ""]);
     sg.innerHTML = cards.map(function(c){
       return '<div class="stat"><div class="k">'+c[0]+'</div><div class="v '+(c[3]||"")+'">'+
              c[1]+(c[2]?'<span class="u">'+c[2]+'</span>':'')+'</div></div>';
@@ -1824,10 +2114,19 @@ time
     var v = $("verdict"), vt = $("verdict-t"), vd = $("verdict-d");
     var hasDrops = stats.dropped > 0 || stats.events > 0;
     var hasTight = stats.tight > 0;
-    if(!hasDrops && !hasTight){
+    if(pontual){
       v.className = "verdict clean";
-      vt.textContent = "No timing anomalies";
-      vd.textContent = "Every interval sits within "+tolerance+"× of the "+fmtGap(intervalNs)+" nominal Δt and above the "+fmtGap(closeNs)+" floor.";
+      vt.textContent = hasTight ? fmtInt(stats.tight)+" arrival"+(stats.tight===1?"":"s")+" under "+fmtGap(closeNs)
+                                : "Sporadic stream";
+      vd.textContent = "Arrivals are pontual (no regular cadence), so missing-message analysis doesn't apply. Typical gap "+fmtGap(intervalNs)+"."
+        + (hasTight ? " Tightest "+fmtGap(stats.tightest)+"." : "");
+    } else if(!hasDrops && !hasTight){
+      v.className = "verdict clean";
+      vt.textContent = burst ? "Burst stream — no anomalies within bursts" : "No timing anomalies";
+      vd.textContent = burst
+        ? "Regular Δt "+fmtGap(intervalNs)+" covering "+coverPct.toFixed(1)+"% of the experiment"
+          + (stats.silences ? " across "+fmtInt(stats.runs)+" bursts ("+stats.silences+" silence"+(stats.silences===1?"":"s")+" excluded from missing)." : ". Silence before/after the data isn't counted as missing.")
+        : "Every interval sits within "+tolerance+"× of the "+fmtGap(intervalNs)+" nominal Δt and above the "+fmtGap(closeNs)+" floor.";
     } else {
       v.className = "verdict loss";
       var parts = [];
@@ -1837,7 +2136,8 @@ time
       var det = [];
       if(hasDrops) det.push("worst gap "+fmtGap(stats.worst)+" ≈ "+fmtInt(Math.max(0,Math.round(stats.worst/intervalNs)-1))+" samples");
       if(hasTight) det.push("tightest "+fmtGap(stats.tightest));
-      vd.textContent = det.join("  ·  ") + ". Nominal Δt "+fmtGap(intervalNs)+".";
+      vd.textContent = det.join("  ·  ") + ". Nominal Δt "+fmtGap(intervalNs)+"."
+        + (burst ? " Burst stream — missing counted only within bursts ("+coverPct.toFixed(1)+"% coverage"+(stats.silences?", "+stats.silences+" silence"+(stats.silences===1?"":"s")+" excluded":"")+")." : "");
     }
 
     // anomaly note
@@ -1866,6 +2166,7 @@ time
     renderTable();
     renderTightTable();
     applyViewVisibility();
+    refreshStreamSelector();   // chip reflects the resolved type (and any override)
   }
 
   function buildChannelLegend(){
@@ -1884,8 +2185,9 @@ time
   }
 
   function applyViewVisibility(){
+    var pontual = stats && stats.type === "pontual";
     $("heat-block").style.display  = showAnom ? "block" : "none";
-    $("drop-block").style.display  = showAnom ? "block" : "none";
+    $("drop-block").style.display  = (showAnom && !pontual) ? "block" : "none";
     $("tight-block").style.display = (showAnom && tightEvents.length) ? "block" : "none";
     $("anom-legend").style.display = showAnom ? "flex" : "none";
     $("chan-legend").style.display = (showRaw && channelCount > 0) ? "flex" : "none";
@@ -2413,18 +2715,29 @@ time
   }
 
   // Populate/show the stream selector when the selection has several streams.
+  // small colored type chip (single letter, full word on hover) — matches the
+  // device-card chips. "?" when the stream hasn't been classified yet.
+  function streamTypeChip(type){
+    if(!type) return '<span class="stype" title="not yet classified">?</span>';
+    return '<span class="stype ' + type + '" title="' + type + '">' + type.charAt(0).toUpperCase() + '</span>';
+  }
+  // Populate the custom stream dropdown: a button showing the current stream's
+  // chip+label, and a popup listing every stream with its type chip on the left.
+  // The loaded stream uses the resolved streamClass; the others use their scan
+  // estimate (s.stats.type) when available.
   function refreshStreamSelector(){
-    var sel = $("regsel");
-    if(!streamList || streamList.length < 2){ sel.style.display = "none"; sel.innerHTML = ""; return; }
-    sel.innerHTML = "";
-    streamList.forEach(function(s, i){
-      var opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = streamLabel(s, harpSchema);
-      if(i === streamIdx) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    sel.style.display = "";
+    var wrap = $("regsel"), btn = $("regsel-btn"), menu = $("regsel-menu");
+    if(!streamList || streamList.length < 2){ wrap.style.display = "none"; wrap.classList.remove("open"); menu.innerHTML = ""; return; }
+    btn.innerHTML = streamTypeChip(streamClass)
+      + '<span class="lbl">' + esc(streamLabel(streamList[streamIdx], harpSchema)) + '</span>'
+      + '<span class="caret">▾</span>';
+    menu.innerHTML = streamList.map(function(s, i){
+      var type = (i === streamIdx) ? streamClass : (s.stats && s.stats.type);
+      return '<div class="regopt' + (i === streamIdx ? ' sel' : '') + '" data-i="' + i + '">'
+        + streamTypeChip(type)
+        + '<span class="lbl">' + esc(streamLabel(s, harpSchema)) + '</span></div>';
+    }).join("");
+    wrap.style.display = "";
   }
 
   // Shared post-parse step for both CSV and Harp loads: build the overview,
@@ -2447,6 +2760,12 @@ time
       // (A manual Δt typed + applied still holds for the current capture.)
       intervalNs = detectedNs;
       intervalIn.dataset.auto = "yes";
+      streamType = "auto";   // each stream re-classifies itself (registers differ)
+      // full view/classification span: the experiment timeline if anchored,
+      // else this stream's own extent (offsets[0] is 0 in that case)
+      timelineNs = (experiment && experiment.timeline)
+        ? experiment.timeline.durationNs
+        : (offsets.length ? offsets[offsets.length-1] : 0);
       tolerance = parseFloat(tolIn.value) || 1.5;
       var cv0 = parseFloat(closeIn.value);
       if(cv0 >= 0) closeFactor = cv0;
@@ -2457,7 +2776,6 @@ time
       $("fname").textContent = displayName;
       $("fmeta").textContent = (sizeBytes/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)
         + (harpInfo ? " · "+harpInfo : "") + (extra || "") + " · loaded in "+loadStr;
-      refreshStreamSelector();
       $("backexp").style.display = currentDevice ? "" : "none";
       loaded.style.display = "flex";
       applyBtn.disabled = false;
@@ -2544,10 +2862,17 @@ time
         dev.schema = matchSchema(dev.name, dev.snapshot && dev.snapshot.whoAmI);
         dev.streams = buildStreams(dev);
       });
-      experiment = { name: split.name, configFiles: split.configFiles, devices: devices };
-      progress.style.display = "none";
-      renderExperiment();
-      startScan();
+      experiment = { name: split.name, configFiles: split.configFiles, devices: devices, timeline: null };
+      // the shared experiment timeline needs each stream's first+last timestamp
+      // (cheap head/tail reads); compute it before the cards so coverage-based
+      // classification and the timeline-anchored view are ready on open
+      ptxt.textContent = "Measuring experiment timeline…";
+      computeTimeline(devices).then(function(tl){
+        experiment.timeline = tl;
+        progress.style.display = "none";
+        renderExperiment();
+        startScan();
+      });
     });
   }
 
@@ -2572,7 +2897,11 @@ time
       card.className = "devcard" + (dev.streams.length ? "" : " inert");
       dev._card = card;
       fillDevCard(dev);
-      if(dev.streams.length) card.addEventListener("click", function(){ openDevice(dev); });
+      // click a specific register row → open that stream; anywhere else → default
+      if(dev.streams.length) card.addEventListener("click", function(e){
+        var row = e.target.closest("tr[data-i]");
+        openDevice(dev, row ? +row.getAttribute("data-i") : -1);
+      });
       grid.appendChild(card);
     });
     $("explist").style.display = "block";
@@ -2593,16 +2922,23 @@ time
     bits.push((dev.bytes/1048576).toFixed(1) + " MB");
     h += '<div class="devinfo">' + esc(bits.join(" · ")) + '</div>';
     if(dev.streams.length){
-      h += '<table><thead><tr><th>stream</th><th class="r">msgs</th><th class="r">Δt</th><th class="r">missing</th></tr></thead><tbody>';
-      dev.streams.forEach(function(s){
+      h += '<table><thead><tr><th>stream</th><th>type</th><th class="r">msgs</th><th class="r">Δt</th><th class="r">missing</th></tr></thead><tbody>';
+      dev.streams.forEach(function(s, i){
         var st = s.stats;
-        h += '<tr><td>' + esc(streamLabel(s, dev.schema)) + '</td>';
+        h += '<tr data-i="' + i + '" title="Open this stream"><td>' + esc(streamLabel(s, dev.schema)) + '</td>';
         if(st){
-          h += '<td class="r">' + st.count.toLocaleString() + '</td>'
+          var typeCell = '<td><span class="stype ' + st.type + '" title="' + st.type + '">'
+            + st.type.charAt(0).toUpperCase() + '</span></td>';
+          // pontual streams have no missing concept; burst counts only within bursts
+          var missCell = (st.type === "pontual")
+            ? '<td class="r" title="sporadic stream — missing not applicable">—</td>'
+            : '<td class="r ' + (st.missing ? "drops" : "ok") + '">' + st.missing.toLocaleString()
+              + (st.drops ? ' (' + st.drops + '×)' : '') + '</td>';
+          h += typeCell
+             + '<td class="r">' + st.count.toLocaleString() + '</td>'
              + '<td class="r">' + (st.dtNs > 0 ? fmtGap(st.dtNs) : "—") + '</td>'
-             + '<td class="r ' + (st.missing ? "drops" : "ok") + '">' + st.missing.toLocaleString()
-             + (st.drops ? ' (' + st.drops + '×)' : '') + '</td>';
-        } else h += '<td class="r">…</td><td class="r">…</td><td class="r">…</td>';
+             + missCell;
+        } else h += '<td>…</td><td class="r">…</td><td class="r">…</td><td class="r">…</td>';
         h += '</tr>';
       });
       h += '</tbody></table>';
@@ -2613,14 +2949,16 @@ time
   }
 
   // Open one device of the experiment in the normal analysis view, with its
-  // matched schema active and its streams in the selector.
-  function openDevice(dev){
+  // matched schema active and its streams in the selector. idx selects which
+  // stream to show; -1 (or out of range) falls back to the largest by bytes.
+  function openDevice(dev, idx){
     pauseScan();
     currentDevice = dev;
     harpSchema = dev.schema || null;
     streamList = dev.streams;
     $("explist").style.display = "none";
-    loadStream(largestStream(streamList));
+    var i = (idx >= 0 && idx < streamList.length) ? idx : largestStream(streamList);
+    loadStream(i);
   }
 
   // ---------- background summary scan ----------
@@ -2632,20 +2970,28 @@ time
   var scanEpoch = 0;
 
   // Running stats over a gap stream: the first gaps are buffered to estimate Δt
-  // (median, like the main analyzer), then every gap — buffered and streamed —
-  // is judged against tolerance×Δt.
-  function makeStatsAcc(){
+  // and the cadence (regular?), then every gap is judged against tolerance×Δt.
+  // The constant/burst split needs the final message count vs the experiment
+  // span (spanNs), so it's decided in done(); meanwhile every dropout is counted
+  // both in full (drops/missing) and as its in-data-silence subset (sdrops/smiss)
+  // so the silence-excluded burst figure is just the difference.
+  function makeStatsAcc(spanNs){
     var CAP = 65536;
-    var count = 0, prev = null, buf = [], dtNs = 0, settled = false, drops = 0, missing = 0;
+    var count = 0, prev = null, buf = [], dtNs = 0, settled = false;
+    var drops = 0, missing = 0, sdrops = 0, smiss = 0;
+    var regular = false, silenceNs = Infinity;
     function judge(g){
       if(dtNs > 0 && g > dtNs * tolerance){
-        drops++;
-        missing += Math.max(1, Math.round(g / dtNs) - 1);
+        var m = Math.max(1, Math.round(g / dtNs) - 1);
+        drops++; missing += m;
+        if(isFinite(silenceNs) && g >= silenceNs){ sdrops++; smiss += m; }
       }
     }
     function settle(){
       settled = true;
       dtNs = buf.length ? detectInterval(buf) : 0;
+      var r = streamRegularity(buf, dtNs, tolerance);   // cadence + silence band from the buffer
+      regular = r.regular; silenceNs = r.silenceNs;
       for(var i=0; i<buf.length; i++) judge(buf[i]);
       buf = null;
     }
@@ -2660,7 +3006,15 @@ time
     }
     function done(){
       if(!settled) settle();
-      return { count: count, dtNs: dtNs, drops: drops, missing: missing };
+      var type, mOut, dOut;
+      if(!regular || !(dtNs > 0) || count < 2){ type = "pontual"; mOut = 0; dOut = 0; }
+      else {
+        var coverage = spanNs > 0 ? (count * dtNs) / spanNs : 1;
+        type = coverage > CLASS_COVER_MIN ? "constant" : "burst";
+        if(type === "burst"){ mOut = missing - smiss; dOut = drops - sdrops; }   // exclude silences
+        else { mOut = missing; dOut = drops; }
+      }
+      return { count: count, dtNs: dtNs, drops: dOut, missing: mOut, type: type };
     }
     return { add: add, done: done };
   }
@@ -2706,7 +3060,7 @@ time
   // changed), park the continuation on scanState.cont while paused.
   function scanStream(stream, epoch){
     return new Promise(function(resolve){
-      var acc = makeStatsAcc();
+      var acc = makeStatsAcc(experiment && experiment.timeline ? experiment.timeline.durationNs : 0);
       var CHUNK = 8 * 1024 * 1024;
       var binary = stream.kind === "bin";
       var files = binary ? stream.group.map(function(h){ return h.file; }) : [stream.file];
@@ -2765,7 +3119,7 @@ time
     var ep = scanState.epoch, task = scanState.queue[scanState.idx];
     scanStream(task.stream, ep).then(function(res){
       if(!scanState || scanState.epoch !== ep) return;
-      task.stream.stats = res || { count: 0, dtNs: 0, drops: 0, missing: 0 };
+      task.stream.stats = res || { count: 0, dtNs: 0, drops: 0, missing: 0, type: "pontual" };
       if(task.dev._card) fillDevCard(task.dev);
       scanState.idx++;
       pumpScan();
@@ -2852,10 +3206,18 @@ time
     fileInput.value = "";
     fileInput.click();
   });
-  // switch which stream (Harp register / CSV) of the selection is analyzed
-  $("regsel").addEventListener("change", function(){
-    if(streamList) loadStream(+this.value);
+  // custom stream dropdown: toggle the popup, pick an option, close on outside click
+  $("regsel-btn").addEventListener("click", function(e){
+    e.stopPropagation();
+    $("regsel").classList.toggle("open");
   });
+  $("regsel-menu").addEventListener("click", function(e){
+    var opt = e.target.closest(".regopt"); if(!opt) return;
+    $("regsel").classList.remove("open");
+    var i = +opt.getAttribute("data-i");
+    if(streamList && i !== streamIdx) loadStream(i);
+  });
+  window.addEventListener("click", function(){ $("regsel").classList.remove("open"); });
   // back from a device's analysis view to the experiment device list
   $("backexp").addEventListener("click", function(){
     currentDevice = null; streamList = null; streamIdx = -1;
@@ -2891,6 +3253,11 @@ time
     render();   // render() refreshes the Δt field from intervalNs
   });
   intervalIn.addEventListener("input", function(){ intervalIn.dataset.auto = "no"; });
+  // stream-type override: re-analyze with the chosen model (per-stream, not saved)
+  typeSel.addEventListener("change", function(){
+    streamType = this.value;
+    if(offsets.length >= 2) render();
+  });
   // chunk size only affects the next file load — persist it, no re-render needed
   $("chunk").addEventListener("change", saveSettings);
   [intervalIn, tolIn, closeIn].forEach(function(el){

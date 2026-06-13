@@ -53,7 +53,7 @@ body += `
 ;global.__t = {
   parseHarpYaml, parseHarpSnapshot, readHarpHeader, makeStatsAcc, makeHarpStatsWalker,
   makeCsvStatsWalker, makeLineParser, splitByFolders, matchSchema, importSchemas,
-  buildStreams, largestStream, streamLabel, median, detectInterval, deviceSchemas,
+  buildStreams, largestStream, streamLabel, median, detectInterval, classifyStream, deviceSchemas,
   G(){ return { firstNs, offsets, gaps, channelNames, channelCount, malformed }; },
   setScan(st){ scanState = st; },
   scanStream,
@@ -154,6 +154,75 @@ function check(label, cond, detail){
     check("Δt: immune to tight bursts", t.detectInterval(withTight) === 1000000, t.detectInterval(withTight));
     // clean un-quantized data: stays at the obvious value
     check("Δt: uniform data unchanged", t.detectInterval([1e6, 1e6, 1e6, 1e6]) === 1e6);
+  }
+
+  // 6c. stream-type classification — coverage of the experiment timeline
+  {
+    const tol = 1.5, dt = 1e6;
+    const sum = (a) => a.reduce((x, y) => x + y, 0);
+
+    // constant: steady cadence filling its whole span (coverage ≈ 1)
+    const constant = [];
+    for (let i = 0; i < 5000; i++) constant.push(i % 500 === 499 ? 3e6 : 1e6);
+    check("classify: full-coverage cadence → constant",
+          t.classifyStream(constant, dt, tol, constant.length + 1, sum(constant)).type === "constant",
+          t.classifyStream(constant, dt, tol, constant.length + 1, sum(constant)).type);
+
+    // pontual: gaps spread over orders of magnitude, no dominant interval
+    const pontual = [];
+    const spread = [2e5, 5e5, 1e6, 4e6, 2e7, 8e5, 3e6, 6e5, 1.5e7, 9e5];
+    for (let i = 0; i < 3000; i++) pontual.push(spread[(i * 7) % spread.length]);
+    check("classify: scattered gaps → pontual",
+          t.classifyStream(pontual, t.detectInterval(pontual), tol, 3001, 1e12).type === "pontual",
+          t.classifyStream(pontual, t.detectInterval(pontual), tol, 3001, 1e12).type);
+
+    // a single dense burst occupying ~10% of the timeline → burst, no in-data silence
+    const oneBurst = [];
+    for (let i = 0; i < 999; i++) oneBurst.push(1e6);     // 1000 msgs, ~1e9 of data
+    const cb1 = t.classifyStream(oneBurst, dt, tol, 1000, 1e10);
+    check("classify: single low-coverage burst → burst",
+          cb1.type === "burst" && cb1.silenceNs === Infinity,
+          JSON.stringify({ type: cb1.type, silenceNs: cb1.silenceNs, cov: +cb1.coverage.toFixed(3) }));
+
+    // multi-burst: 4 runs split by ~1 s silences, low coverage → burst + silence band
+    const burst = [];
+    for (let r = 0; r < 4; r++) {
+      for (let i = 0; i < 1000; i++) burst.push(1e6);
+      if (r < 3) burst.push(1e9);                          // 1000× Δt silence
+    }
+    const cb = t.classifyStream(burst, dt, tol, burst.length + 1, 1e11);
+    check("classify: multi-burst → burst, silence band found",
+          cb.type === "burst" && cb.silenceNs === 1e9,
+          JSON.stringify({ type: cb.type, silenceNs: cb.silenceNs }));
+
+    // a mostly-covered stream with one ordinary outage stays constant (the
+    // outage's missing are still counted, unlike a low-coverage burst)
+    const outage = [];
+    for (let i = 0; i < 4000; i++) outage.push(i === 2000 ? 5e8 : 1e6);
+    check("classify: mostly-covered stream with one outage → constant",
+          t.classifyStream(outage, dt, tol, 4001, sum(outage)).type === "constant",
+          t.classifyStream(outage, dt, tol, 4001, sum(outage)).type);
+
+    // makeStatsAcc over a 5× timeline: low coverage → burst, silences excluded
+    const acc = t.makeStatsAcc(2e10);
+    let ts = 0n;
+    for (let r = 0; r < 4; r++) {
+      for (let i = 0; i < 1000; i++) { acc.add(ts); ts += (i === 500 ? 3000000n : 1000000n); }
+      if (r < 3) ts += 1000000000n;                        // silence between runs
+    }
+    const res = acc.done();
+    check("burst stats: silences excluded, in-burst drops counted",
+          res.type === "burst" && res.missing === 8 && res.drops === 4,
+          JSON.stringify({ type: res.type, missing: res.missing, drops: res.drops }));
+
+    // makeStatsAcc with a span matching the data → constant, all drops counted
+    const acc2 = t.makeStatsAcc(4e9);
+    let ts2 = 0n;
+    for (let i = 0; i < 4000; i++) { acc2.add(ts2); ts2 += (i % 1000 === 999 ? 3000000n : 1000000n); }
+    const res2 = acc2.done();
+    check("constant stats: full coverage counts every drop",
+          res2.type === "constant" && res2.drops === 3 && res2.missing === 6,
+          JSON.stringify({ type: res2.type, missing: res2.missing, drops: res2.drops }));
   }
 
   // 7. splitByFolders classification
