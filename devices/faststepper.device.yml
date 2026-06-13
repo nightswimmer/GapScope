@@ -1,0 +1,187 @@
+%YAML 1.1
+---
+# yaml-language-server: $schema=https://harp-tech.org/draft-02/schema/device.json
+device: FastStepper
+whoAmI: 2120
+firmwareVersion: "0.6"
+hardwareTargets: "1.3"
+registers:
+  Control:
+    address: 32
+    type: U16
+    description: Control the device modules.
+    access: Write
+    maskType: ControlFlags
+  Encoder:
+    address: 33
+    type: S16
+    description: Contains the reading of the quadrature encoder.
+    access: Event
+  AnalogInput:
+    address: 34
+    type: S16
+    description: Contains the reading of the analog input.
+    access: Event
+  StopSwitch:
+    address: 35
+    type: U8
+    description: Contains the state of the stop switch.
+    access: Event
+    maskType: StopSwitchFlags
+  MotorBrake:
+    address: 36
+    type: U8
+    description:  Sets the state of the motor brake output.
+    access: Write
+    maskType: MotorBrakeFlags
+  Moving:
+    address: 37
+    type: U8
+    description:  Contains the state of the motor movement.
+    access: Event
+    maskType: MovingFlags
+  StopMovement:
+    address: 38
+    type: U8
+    description: Instantly stops the motor movement.
+    access: Write
+  DirectVelocity:
+    address: 39
+    type: S32
+    description: Instantly start moving at a specific speed and direction according to the register's value and signal.
+    access: Write
+  MoveTo:
+    address: 40
+    type: S32
+    description: Moves to a specific position, using the current velocity, acceleration and jerk configurations.
+    access: Write
+  MoveToParametric:
+    address: 41
+    type: S32
+    length: 7
+    description: Same as MOVE_TO, but redefines the values for velocity, acceleration and jerk configurations before moving. [TARGET_POSITION, MIN_VELOCITY, MAX_VELOCITY, ACCELERATION, DECELERATION, ACCELERATION_JERK, DECELERATION_JERK]
+    access: Write
+  MoveToEvents:
+    address: 42
+    type: U8
+    description: Reports possible events regarding the execution of the ADD_REG_MOVE_TO register.
+    access: Event
+    maskType: MoveToEventsFlags
+  MinVelocity:
+    address: 43
+    type: S32
+    description: Sets the minimum velocity for the movement (steps/s)
+    access: Write
+    defaultValue: 200
+    minValue: 16
+    maxValue: 20000
+  MaxVelocity:
+    address: 44
+    type: S32
+    description: Sets the maximum velocity for the movement (steps/s)
+    access: Write
+    defaultValue: 2000
+    minValue: 16
+    maxValue: 20000
+  Acceleration:
+    address: 45
+    type: S32
+    description: Sets the acceleration for the movement (steps/s^2)
+    access: Write
+    defaultValue: 1000
+    minValue: 1
+    maxValue: 999999999
+  Deceleration:
+    address: 46
+    type: S32
+    description: Sets the deceleration for the movement (steps/s^2)
+    access: Write
+    defaultValue: -1000
+    minValue: -999999999
+    maxValue: -1
+  AccelerationJerk:
+    address: 47
+    type: S32
+    description: Sets the jerk for the acceleration part of the movement (steps/s^3)
+    access: Write
+    defaultValue: 0
+  DecelerationJerk:
+    address: 48
+    type: S32
+    description: Sets the jerk for the deceleration part of the movement (steps/s^3)
+    access: Write
+    defaultValue: 0
+  HomeSteps:
+    address: 49
+    type: S32
+    description: Moves a specific number of steps in a direction according to the register's value and signal, attempting to perform a homing routine. Resets the current position to 0 when the home sensor is hit. The home steps value should be slightly over than the longest possible movement.
+    access: Write
+  HomeStepsEvents:
+    address: 50
+    type: U8
+    description: Reports possible events regarding the execution of the REG_HOME_STEPS register.
+    access: Event
+    maskType: HomeStepsEventsFlags
+  HomeVelocity:
+    address: 51
+    type: U32
+    description: Sets the fixed velocity for the homing movement (steps/s)
+    access: Write
+    defaultValue: 200
+    minValue: 16
+    maxValue: 20000
+  HomeSwitch:
+    address: 52
+    type: U8
+    description: Contains the state of the home switch.
+    access: Event
+bitMasks:
+  ControlFlags:
+    description: Available device module configuration flags.
+    bits:
+      EnableMotor: 0x1
+      DisableMotor: 0x2
+      EnableAnalogInput: 0x4
+      DisableAnalogInput: 0x8
+      EnableEncoder: 0x10
+      DisableEncoder: 0x20
+      ResetEncoder: 0x40
+      EnableHoming: 0x80
+      DisableHoming: 0x100
+  StopSwitchFlags:
+    description: Flags describing the state of the motor stop switch.
+    bits:
+      StopSwitch: 0x1
+  MovingFlags:
+    description: Flags describing the movement state of the motor.
+    bits:
+      StopMoving: 0x0
+      StartMoving: 0x1
+  HomeSwitchFlags:
+    description: Flags describing the state of the motor stop switch.
+    bits:
+      HomeSwitch: 0x1
+  MotorBrakeFlags:
+    description: Activate the brake.
+    bits:
+      BreakOn: 0x1
+      BreakOff: 0x0
+  MoveToEventsFlags:
+    description: Flags describing the status of the move to command.
+    bits:
+      MoveSuccessful: 0x1
+      MoveAborted: 0x2
+      InvalidPosition: 0x4
+      HomingMissing: 0x8
+      CurrentlyHoming: 0x10
+      MotorDisabled: 0x20
+      InvalidParameters: 0x40
+  HomeStepsEventsFlags:
+    description: Flags describing the status of the homing sequence.
+    bits:
+      HomingSuccessful: 0x1
+      HomingFailed: 0x2
+      AlreadyHome: 0x4
+      UnexpectedHome: 0x8
+      HomingDisabled: 0x10
+      MotorDisabled: 0x20

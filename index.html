@@ -124,6 +124,39 @@
   .note{display:none;margin-top:16px;border:1px solid rgba(255,84,112,.4);background:rgba(255,84,112,.07);
     color:#ffd2da;border-radius:8px;padding:12px 16px;font-size:13px;font-family:var(--mono)}
 
+  /* experiment device list */
+  .explist{display:none}
+  .explist .exphead{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:12px 16px;
+    font-family:var(--mono);font-size:13px}
+  .explist .exphead .file{color:var(--text);display:flex;align-items:center;gap:10px;min-width:0}
+  .explist .exphead .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 8px var(--accent)}
+  .explist .exphead .expmeta{color:var(--text-dim);font-size:12px;margin-left:10px}
+  .explist .exphead a.reload{color:var(--accent);cursor:pointer;font-size:12px;text-decoration:none;border-bottom:1px solid transparent}
+  .explist .exphead a.reload:hover{border-bottom-color:var(--accent)}
+  .explist .scanline{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.06em;
+    margin:10px 2px 0;min-height:16px}
+  .devgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-top:12px}
+  .devcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+    cursor:pointer;transition:border-color .15s}
+  .devcard:hover{border-color:var(--accent)}
+  .devcard.inert{cursor:default;opacity:.55}
+  .devcard.inert:hover{border-color:var(--line)}
+  .devcard .devtop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+  .devcard .devname{font-family:var(--mono);font-size:15px;color:var(--text);font-weight:600}
+  .devcard .devbadge{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    border:1px solid var(--line-bright);border-radius:5px;padding:2px 7px;color:var(--text-dim);white-space:nowrap}
+  .devcard .devbadge.known{color:var(--phosphor);border-color:rgba(52,224,196,.4);background:var(--phosphor-dim)}
+  .devcard .devinfo{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:8px}
+  .devcard table{font-size:12px}
+  .devcard thead th{padding:6px 8px}
+  .devcard tbody td{padding:5px 8px;border-bottom:1px solid var(--bg-grid)}
+  .devcard tbody tr:hover{background:transparent}
+  .devcard td:first-child{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .devcard td.drops{color:var(--drop)}
+  .devcard td.ok{color:var(--phosphor)}
+  .drop .schemastat{margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--text-faint)}
+
   /* results */
   .results{display:none;margin-top:26px;animation:rise .4s ease both}
   @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -255,8 +288,8 @@
       <div class="ctl">
         <label for="close">Too-close under</label>
         <div class="row">
-          <input id="close" type="number" step="1" min="0" value="900">
-          <span class="unit">µs</span>
+          <input id="close" type="number" step="0.1" min="0" value="0.9" title="Spacings tighter than this fraction of Δt are flagged as too close">
+          <span class="unit">× Δt</span>
         </div>
       </div>
       <div class="ctl">
@@ -275,7 +308,8 @@
     <input type="file" id="file" accept=".csv,.txt,.bin,.harp,.yml,.yaml,text/csv,text/plain" multiple style="display:none">
     <input type="file" id="dir" webkitdirectory style="display:none">
     <p class="big">Drop your capture here</p>
-    <p class="small">or click to browse — CSV, or Harp <code>.bin</code> files (<a class="folderlink" id="pickfolder">pick a folder</a> / drop several to combine one register; add a <code>device.yml</code> for names). Stays on your machine, nothing is uploaded.</p>
+    <p class="small">or click to browse — CSV, or Harp <code>.bin</code> files (<a class="folderlink" id="pickfolder">pick a folder</a> / drop several to combine one register; add a <code>device.yml</code> for names). An experiment folder (one sub-folder per device) opens as a device list. Stays on your machine, nothing is uploaded.</p>
+    <p class="small schemastat" id="schemastat" style="display:none"></p>
     <div class="fmt">time,analog_input0,encoder,analog_input1
 2026-06-09 22:20:33.475999832+00:00,7,0,7
 2026-06-09 22:20:33.476992130+00:00,7,0,8
@@ -286,10 +320,21 @@ time
 2261.582496</div>
   </div>
 
+  <!-- experiment device list -->
+  <div class="explist" id="explist">
+    <div class="exphead">
+      <div class="file"><span class="dot"></span><span class="name" id="expname"></span><span class="expmeta" id="expmeta"></span></div>
+      <a class="reload" id="expclose">Load another capture</a>
+    </div>
+    <div class="scanline" id="scanline"></div>
+    <div class="devgrid" id="devgrid"></div>
+  </div>
+
   <div class="loaded" id="loaded">
+    <a class="reload" id="backexp" style="display:none" title="Back to the experiment device list">← devices</a>
     <div class="file"><span class="dot"></span><span class="name" id="fname"></span></div>
     <div class="meta" id="fmeta"></div>
-    <select class="regsel" id="regsel" style="display:none" title="Choose which Harp register to analyze"></select>
+    <select class="regsel" id="regsel" style="display:none" title="Choose which stream of this selection to analyze"></select>
     <a class="reload" id="reload">Load another capture</a>
   </div>
 
@@ -410,15 +455,24 @@ time
   var chMin = [], chMax = []; // per-channel global value range
   var showRaw = false, showAnom = true, showTs = false;  // view-layer toggles
   var malformed = 0, outOfOrder = 0, duplicates = 0;
-  // Harp binary support: a parsed device.yml schema (address -> {name, members})
-  // kept across loads so one schema labels successive per-register .bin files,
-  // plus a short description of the most recent binary load for the meta line.
+  // Harp binary support: the schema applied to the CURRENT load — a parsed
+  // device.yml ({device, whoAmI, registers:{addr:{name,members}}}) — plus a
+  // short description of the most recent binary load for the meta line.
   var harpSchema = null, harpInfo = "";
-  // Multi-file Harp loads: header scan of the dropped/picked .bin set, grouped by
-  // register address, so same-register files can be concatenated into one timeline
-  // and the user can switch which register is analyzed. Null for CSV / single-bin.
-  var harpFiles = null;   // { byAddr: {addr:[{file,firstTs,size}]}, addresses:[…] }
-  var harpAddr = null;    // register address currently concatenated
+  // Known-device schema library: device name -> parsed device.yml. Populated by
+  // dropping .yml files (e.g. the `devices` folder) and persisted in localStorage
+  // as raw yml text, so schemas are remembered across sessions.
+  var deviceSchemas = {};
+  // Streams loadable from the current selection: each is one Harp register (the
+  // time-ordered group of its .bin files) or one CSV file. The selector in the
+  // loaded bar switches between them. Null for a plain single-file load.
+  var streamList = null;  // [{kind:"bin",addr,group:[hdr]} | {kind:"csv",file}, label, bytes]
+  var streamIdx = -1;     // index of the stream currently analyzed
+  // Experiment mode: a dropped folder whose sub-folders each hold one device's
+  // files. Null when analyzing a plain file/folder.
+  var experiment = null;    // { name, configFiles:[File], devices:[…] }
+  var currentDevice = null; // device whose streams are loaded (experiment mode)
+  var scanState = null;     // background summary scan: {epoch, paused, queue, idx, cont}
   // Harp time is seconds since 1904-01-01; Unix epoch is 1970-01-01, which is
   // later by 2082844800 s. Subtracting this offset (in ns) from a clock-synced
   // Harp timestamp gives Unix-epoch ns so absolute/wall-clock mode reads right.
@@ -426,7 +480,8 @@ time
   var intervalNs = 1e6;      // nominal Δt
   var detectedNs = 1e6;
   var tolerance = 1.5;
-  var closeNs = 9e5;         // too-close threshold (default 900 µs)
+  var closeFactor = 0.9;     // too-close threshold as a fraction of Δt
+  var closeNs = 0.9e6;       // derived: closeFactor × intervalNs, recomputed per load/apply
   var stats = null;
   var gapEvents = [];        // {start, end, gapNs, missing}
   var tightEvents = [];      // {start, gapNs} for spacings below closeNs
@@ -496,7 +551,7 @@ time
   // Per-line parser. Holds parse state (header detection, ordering) across
   // chunk boundaries so the file can be fed one line at a time as it streams in.
   function makeLineParser(){
-    var started = false, prev = null, headerFields = null;
+    var started = false, prev = null, headerFields = null, baseNs = 0n;
     function feed(raw){
       if(!raw) return;
       var parts = raw.split(",");
@@ -508,7 +563,12 @@ time
         malformed++; return;
       }
       if(!started){
-        started = true; firstNs = ts;
+        started = true; baseNs = ts;
+        // a seconds column counting from the Harp epoch (1904) — first value
+        // past ~1999 in 1904 terms, i.e. past ~2065 as a Unix time — is shifted
+        // to the Unix epoch so wall-clock mode reads right (the same rule the
+        // binary parser applies). Offsets stay relative to the raw base.
+        firstNs = ts > 3000000000000000000n ? ts - HARP_EPOCH_OFFSET_NS : ts;
         channelCount = Math.max(0, parts.length - 1);
         for(var ci=0; ci<channelCount; ci++){
           channels[ci] = [];
@@ -517,7 +577,7 @@ time
           channelNames[ci] = nm || ("ch"+ci);
         }
       }
-      var off = Number(ts - firstNs);
+      var off = Number(ts - baseNs);
       if(prev !== null){
         var g = off - prev;
         if(g < 0){ outOfOrder++; }
@@ -637,7 +697,7 @@ time
       epochAdd = (hasTs && sec0 > 3000000000) ? -HARP_EPOCH_OFFSET_NS : 0n;
       // resolve channel names from the device.yml schema when available
       channelCount = nEl;
-      var reg = harpSchema ? harpSchema[addr] : null;
+      var reg = harpSchema && harpSchema.registers ? harpSchema.registers[addr] : null;
       for(var ci=0; ci<nEl; ci++){
         channels[ci] = []; chMin[ci] = Infinity; chMax[ci] = -Infinity;
         var nm = reg && reg.members && reg.members[ci];
@@ -737,16 +797,66 @@ time
         var ptype = dv.getUint8(4), hasTs = (ptype & HARP_TS_MASK) !== 0;
         var ok = harpDtype(ptype & ~HARP_TS_MASK) != null && hasTs;
         var ts = hasTs ? (BigInt(dv.getUint32(5, true))*1000000000n + BigInt(dv.getUint16(9, true))*32000n) : null;
-        resolve({ file: file, address: dv.getUint8(2), firstTs: ts, size: file.size || 0, ok: ok });
+        // a register data file repeats one address at a fixed stride; a register
+        // SNAPSHOT dump (the per-register device state written at connect) mixes
+        // addresses/strides — peek at the second message to tell them apart
+        var addr = dv.getUint8(2), stride = dv.getUint8(1) + 2, snapshot = false;
+        if(stride >= 6 && b.length >= stride + 3 && dv.getUint8(stride + 2) !== addr) snapshot = true;
+        resolve({ file: file, address: addr, firstTs: ts, size: file.size || 0, ok: ok || snapshot, snapshot: snapshot });
       };
-      fr.readAsArrayBuffer(file.slice(0, 64));
+      fr.readAsArrayBuffer(file.slice(0, 1024));
     });
+  }
+
+  // Walk a register snapshot dump (one message per register, variable stride):
+  // collect the register inventory and the WhoAmI value (register 0) used to
+  // match the device against the known-device schema library. Files are tiny
+  // (one message per register), so the whole file is read at once.
+  function parseHarpSnapshot(file){
+    return new Promise(function(resolve){
+      var fr = new FileReader();
+      fr.onerror = function(){ resolve(null); };
+      fr.onload = function(){
+        var b = new Uint8Array(fr.result);
+        var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+        var seen = {}, regs = [], whoAmI = null, off = 0;
+        while(off + 5 <= b.length){
+          var stride = dv.getUint8(off + 1) + 2;
+          if(stride < 6 || off + stride > b.length) break;
+          var addr = dv.getUint8(off + 2);
+          var ptype = dv.getUint8(off + 4);
+          var dt = harpDtype(ptype & ~HARP_TS_MASK);
+          if(addr === 0 && whoAmI === null && dt){
+            var dataOff = off + ((ptype & HARP_TS_MASK) ? 11 : 5);
+            if(dataOff + dt.size <= off + stride - 1) whoAmI = dt.read(dv, dataOff);
+          }
+          if(!seen[addr]){ seen[addr] = true; regs.push(addr); }
+          off += stride;
+        }
+        resolve(regs.length ? { whoAmI: whoAmI, registers: regs } : null);
+      };
+      fr.readAsArrayBuffer(file);
+    });
+  }
+
+  // Path of a file relative to the dropped/picked root: the folder picker fills
+  // webkitRelativePath, drag traversal stamps _relPath from entry.fullPath, and
+  // a plain file selection has neither (bare name → no folder structure).
+  function relPathOf(f){
+    return f.webkitRelativePath || f._relPath || (f.name || "");
   }
 
   // Recursively collect File objects from dropped FileSystemEntry items (folders).
   function entryToFiles(entry){
     return new Promise(function(resolve){
-      if(entry.isFile){ entry.file(function(f){ resolve([f]); }, function(){ resolve([]); }); }
+      if(entry.isFile){
+        entry.file(function(f){
+          // remember where in the dropped tree this file came from (fullPath is
+          // rooted at the drop, e.g. "/exp/Behavior0/x.bin") for classification
+          try{ f._relPath = String(entry.fullPath || "").replace(/^\//, ""); }catch(e){}
+          resolve([f]);
+        }, function(){ resolve([]); });
+      }
       else if(entry.isDirectory){
         var reader = entry.createReader(), all = [];
         (function readBatch(){
@@ -776,6 +886,7 @@ time
     var regList = [];                // every register, in document order
     var byAddress = {};
     var regBase = -1, inRegisters = false;
+    var devName = null, whoAmI = null;
     var cur = null, curIndent = -1;
     var inSpec = false, memberIndent = -1, curMember = null;
     for(var li=0; li<lines.length; li++){
@@ -783,7 +894,16 @@ time
       if(!line.trim()) continue;
       var ind = indentOf(line);
       var t = line.trim();
-      if(!inRegisters){ if(/^registers:\s*$/.test(t)) inRegisters = true; continue; }
+      if(!inRegisters){
+        if(/^registers:\s*$/.test(t)){ inRegisters = true; continue; }
+        if(ind === 0){                               // top-level device identity
+          var dm = /^device:\s*(.+)$/.exec(t);
+          if(dm) devName = dm[1].trim().replace(/^["']|["']$/g, "");
+          var wm = /^whoAmI:\s*(\d+)/.exec(t);
+          if(wm) whoAmI = +wm[1];
+        }
+        continue;
+      }
       if(regBase === -1) regBase = ind;              // first child sets the level
       if(ind < regBase) break;                       // left the registers block
       var kv = /^("?[^:"]+"?):\s*(.*)$/.exec(t);
@@ -839,7 +959,96 @@ time
       if(reg.address == null) return;
       out[reg.address] = { name: reg.name, members: members(reg) };
     });
-    return Object.keys(out).length ? out : null;
+    if(!Object.keys(out).length) return null;        // not a device schema
+    return { device: devName, whoAmI: whoAmI, registers: out };
+  }
+
+  // ---------- known-device schema library ----------
+  // Dropped device.yml schemas are kept by device name and persisted as raw yml
+  // text in localStorage, so dropping the `devices` folder once is enough: any
+  // later load whose name matches a known device gets its register names.
+  var DEVICES_KEY = "gapscope.devices";
+  function saveDeviceSchemas(texts){
+    try{ localStorage.setItem(DEVICES_KEY, JSON.stringify(texts)); }catch(e){}
+  }
+  function loadDeviceSchemas(){
+    var texts;
+    try{ texts = JSON.parse(localStorage.getItem(DEVICES_KEY) || "null"); }
+    catch(e){ texts = null; }
+    if(!texts) return;
+    Object.keys(texts).forEach(function(name){
+      var parsed = parseHarpYaml(texts[name]);
+      if(parsed) deviceSchemas[name] = parsed;
+    });
+  }
+  function clearDeviceSchemas(){
+    deviceSchemas = {};
+    try{ localStorage.removeItem(DEVICES_KEY); }catch(e){}
+    refreshSchemaStat();
+  }
+  // Read each dropped .yml: device schemas join the library (and are persisted);
+  // files that don't parse as one (e.g. a rig configuration) are handed back.
+  function importSchemas(files){
+    if(!files || !files.length) return Promise.resolve({ added: [], rest: [] });
+    var added = [], rest = [];
+    return Promise.all(files.map(function(f){
+      return new Promise(function(resolve){
+        var fr = new FileReader();
+        fr.onerror = function(){ rest.push(f); resolve(); };
+        fr.onload = function(){
+          var text = String(fr.result);
+          var parsed = parseHarpYaml(text);
+          if(parsed){
+            // file-name fallback honors the <device>.device.yml convention
+            var name = parsed.device || (f.name || "device").replace(/(\.device)?\.ya?ml$/i, "");
+            deviceSchemas[name] = parsed;
+            added.push({ name: name, text: text });
+          } else rest.push(f);
+          resolve();
+        };
+        fr.readAsText(f);
+      });
+    })).then(function(){
+      if(added.length){
+        var texts;
+        try{ texts = JSON.parse(localStorage.getItem(DEVICES_KEY) || "{}"); }
+        catch(e){ texts = {}; }
+        added.forEach(function(a){ texts[a.name] = a.text; });
+        saveDeviceSchemas(texts);
+        refreshSchemaStat();
+      }
+      return { added: added.map(function(a){ return a.name; }), rest: rest };
+    });
+  }
+  // Schema for a device folder (or file) name: an exact WhoAmI match wins (read
+  // from the device's register snapshot), else the longest known device name
+  // that prefixes the name — Behavior.yml ("Behavior") matches "Behavior0".
+  function matchSchema(name, whoAmI){
+    var names = Object.keys(deviceSchemas);
+    if(whoAmI != null){
+      for(var i=0; i<names.length; i++)
+        if(deviceSchemas[names[i]].whoAmI === whoAmI) return deviceSchemas[names[i]];
+    }
+    var best = null, bestLen = 0;
+    var lower = String(name || "").toLowerCase();
+    names.forEach(function(n){
+      if(n.length > bestLen && lower.indexOf(n.toLowerCase()) === 0){
+        best = deviceSchemas[n]; bestLen = n.length;
+      }
+    });
+    return best;
+  }
+  // Drop-zone line showing how many device schemas the library holds.
+  function refreshSchemaStat(){
+    var el = $("schemastat");
+    var names = Object.keys(deviceSchemas);
+    if(!names.length){ el.style.display = "none"; el.innerHTML = ""; return; }
+    el.style.display = "";
+    el.textContent = names.length + " known device schema" + (names.length>1?"s":"") + ": " + names.sort().join(", ") + " ";
+    var a = document.createElement("a");
+    a.className = "folderlink"; a.textContent = "forget";
+    a.addEventListener("click", function(ev){ ev.stopPropagation(); clearDeviceSchemas(); });
+    el.appendChild(a);
   }
 
   // Decide whether a file is a Harp binary: trust .bin/.harp extensions, treat
@@ -867,6 +1076,24 @@ time
     pos.sort(function(a,b){ return a-b; });
     var mid = pos.length >> 1;
     return pos.length % 2 ? pos[mid] : (pos[mid-1]+pos[mid])/2;
+  }
+
+  // Nominal Δt estimate: the median of the gaps, refined to the mean of the
+  // "normal" gaps around it (within ±50%). Harp timestamps tick every 32 µs,
+  // so a register paced at e.g. exactly 1 ms can only produce 992/1024 µs gaps
+  // (31/32 ticks, ~3:1) — the median locks onto one tick value (992) while the
+  // true interval (1000) is their weighted mean. Averaging only the gaps near
+  // the median keeps the estimate as dropout/doublet-proof as the median was:
+  // a long dropout gap or a tight burst falls outside the window.
+  function detectInterval(arr){
+    var med = median(arr);
+    if(!(med > 0)) return med;
+    var lo = med * 0.5, hi = med * 1.5, sum = 0, k = 0;
+    for(var i=0; i<arr.length; i++){
+      var g = arr[i];
+      if(g >= lo && g <= hi){ sum += g; k++; }
+    }
+    return k ? sum / k : med;
   }
 
   // ---------- analysis ----------
@@ -1574,7 +1801,7 @@ time
     $("th-time-tight").textContent = "Time " + timeColHeader();
     intervalIn.value = (intervalNs/1e6).toPrecision(6).replace(/\.?0+$/,"");
     tolIn.value = tolerance;
-    closeIn.value = Math.round(closeNs/1e3);
+    closeIn.value = closeFactor;
 
     // stats
     var lossPct = stats.expected > 0 ? (stats.dropped/stats.expected*100) : 0;
@@ -1960,9 +2187,10 @@ time
   var STORAGE_KEY = "gapscope.settings";
   function saveSettings(){
     try{
-      var s = { tolerance: tolerance, closeNs: closeNs, showRaw: showRaw, showAnom: showAnom, showTs: showTs, chunkMB: parseFloat($("chunk").value) || 8 };
-      // persist a pinned Δt only when the user fixed one; auto-detect otherwise
-      if(intervalIn.dataset.auto === "no" && intervalNs > 0) s.intervalNs = intervalNs;
+      // Δt itself is never persisted: registers run at different rates, so each
+      // loaded stream re-detects its own nominal interval. Only the relative
+      // thresholds (multipliers of Δt) and view preferences are kept.
+      var s = { tolerance: tolerance, closeFactor: closeFactor, showRaw: showRaw, showAnom: showAnom, showTs: showTs, chunkMB: parseFloat($("chunk").value) || 8 };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
     }catch(e){ /* storage unavailable (private mode, etc.) — ignore */ }
   }
@@ -1972,26 +2200,21 @@ time
     catch(e){ s = null; }
     if(!s) return;
     if(typeof s.tolerance === "number" && s.tolerance >= 1) tolerance = s.tolerance;
-    if(typeof s.closeNs === "number" && s.closeNs >= 0) closeNs = s.closeNs;
+    if(typeof s.closeFactor === "number" && s.closeFactor >= 0) closeFactor = s.closeFactor;
+    // (legacy keys ignored: closeNs was an absolute µs floor, intervalNs a
+    // pinned Δt — both replaced by per-stream auto-detection + multipliers)
     if(typeof s.showRaw === "boolean") showRaw = s.showRaw;
     if(typeof s.showAnom === "boolean") showAnom = s.showAnom;
     if(typeof s.showTs === "boolean") showTs = s.showTs;
     if(typeof s.chunkMB === "number" && s.chunkMB > 0) $("chunk").value = s.chunkMB;
-    if(typeof s.intervalNs === "number" && s.intervalNs > 0){
-      intervalNs = s.intervalNs;
-      intervalIn.dataset.auto = "no";
-    }
   }
   // mirror the current settings (globals) into the on-screen controls
   function reflectSettings(){
     tolIn.value = tolerance;
-    closeIn.value = Math.round(closeNs/1e3);
+    closeIn.value = closeFactor;
     $("show-raw").checked = showRaw;
     $("show-anom").checked = showAnom;
     $("show-ts").checked = showTs;
-    if(intervalIn.dataset.auto === "no" && intervalNs > 0){
-      intervalIn.value = (intervalNs/1e6).toPrecision(6).replace(/\.?0+$/,"");
-    }
   }
 
   // ---------- file handling ----------
@@ -2002,106 +2225,203 @@ time
     applyBtn.disabled = true;
   }
 
-  // Entry point for one or more dropped/selected files: a CSV/Harp data file
-  // plus an optional device.yml schema (kept for labeling subsequent .bin loads).
+  // Return to the "choose something" view after an error or a back action:
+  // the experiment device list when an experiment is open, else the drop zone.
+  function returnHome(){
+    progress.style.display = "none";
+    if(experiment){ $("explist").style.display = "block"; resumeScan(); }
+    else drop.style.display = "block";
+  }
+
+  // Entry point for any dropped/selected set. device.yml schemas are imported
+  // into the library first; the rest is classified by folder structure — data
+  // files inside sub-folders mean an EXPERIMENT folder (one device per
+  // sub-folder), while a flat set keeps the single-device behavior (bins
+  // grouped by register, or one CSV).
   function handleFiles(fileList){
     var files = Array.prototype.slice.call(fileList || []);
     if(!files.length) return;
-    var schemaFiles = [], binFiles = [], otherFiles = [];
+    var ymls = [], data = [];
     files.forEach(function(f){
-      var n = (f.name || "").toLowerCase();
-      if(/\.ya?ml$/.test(n)) schemaFiles.push(f);
-      else if(/\.(bin|harp|dat)$/.test(n)) binFiles.push(f);
-      else otherFiles.push(f);              // .csv/.txt/unknown — sniffed in handleFile
+      ((/\.ya?ml$/.test((f.name || "").toLowerCase())) ? ymls : data).push(f);
     });
-    function proceed(){
-      if(binFiles.length) handleHarpBins(binFiles);
-      else if(otherFiles.length) handleFile(otherFiles[0]);   // CSV: one file (no concat)
-      else if(schemaFiles.length && loaded.style.display !== "none"){
-        $("fmeta").textContent += " · schema loaded";          // schema only: just note it
+    importSchemas(ymls).then(function(imp){
+      // ymls that aren't device schemas (e.g. a rig configuration) only matter
+      // as experiment config files — they're never loaded as data
+      // schema-only outcome (nothing loadable dropped): acknowledge the import
+      function noteSchemaImport(){
+        if(imp.added.length){
+          note.style.display = "none";
+          // a schema dropped on its own also becomes the active one (old sticky
+          // behavior), so the next load is labeled even without a name match
+          harpSchema = deviceSchemas[imp.added[imp.added.length - 1]];
+          if(loaded.style.display !== "none") $("fmeta").textContent += " · schema loaded";
+          // late schema import while an experiment is open: re-match the
+          // devices that had no schema yet and refresh their cards
+          if(experiment) experiment.devices.forEach(function(dev){
+            if(!dev.schema){
+              dev.schema = matchSchema(dev.name, dev.snapshot && dev.snapshot.whoAmI);
+              if(dev.schema && dev._card) fillDevCard(dev);
+            }
+          });
+        } else if(ymls.length){
+          showError("No device schema found in the dropped .yml file(s).");
+        }
       }
-    }
-    if(schemaFiles.length){                  // parse the (last) device.yml first, keep it
-      var fr = new FileReader();
-      fr.onload = function(){ harpSchema = parseHarpYaml(String(fr.result)) || harpSchema; proceed(); };
-      fr.onerror = function(){ proceed(); };
-      fr.readAsText(schemaFiles[schemaFiles.length - 1]);
-    } else proceed();
+      var dataFiles = data.concat(imp.rest);
+      if(!dataFiles.length){ noteSchemaImport(); return; }
+      var split = splitByFolders(dataFiles);
+      if(split.experiment){ startExperiment(split); return; }
+      // flat load: replaces any open experiment
+      var bins = [], others = [];
+      data.forEach(function(f){
+        var n = (f.name || "").toLowerCase();
+        if(/\.(bin|harp|dat)$/.test(n)) bins.push(f);
+        // docs/config riding along (e.g. a SOURCES.md in a schema folder)
+        // aren't captures; everything else is sniffed in loadSingleFile
+        else if(!/\.(md|json)$/.test(n)) others.push(f);
+      });
+      if(!bins.length && !others.length){ noteSchemaImport(); return; }
+      teardownExperiment();
+      // schema for this load: one dropped with the set wins, else a library
+      // match on the file name (bins are named <Device>_<addr>_<ts>.bin),
+      // else whatever was already active stays (old sticky behavior)
+      if(imp.added.length) harpSchema = deviceSchemas[imp.added[imp.added.length - 1]];
+      else if(bins.length) harpSchema = matchSchema(bins[0].name || "", null) || harpSchema;
+      if(bins.length) handleHarpBins(bins);
+      else handleFile(others[0]);                     // CSV: one file (no concat)
+    });
   }
 
-  // Pre-scan a set of .bin files, group by register address, and concatenate the
-  // largest register by default (a register selector lets the user switch).
+  // Classify a dropped set by folder structure: strip the dropped folder itself
+  // (the shared first path segment), then files still inside sub-folders form
+  // device groups; files at the root are experiment configuration.
+  function splitByFolders(files){
+    var paths = files.map(function(f){ return relPathOf(f).split("/").filter(Boolean); });
+    var root = null;
+    if(paths.every(function(p){ return p.length >= 2; })){
+      var first = paths[0][0];
+      if(paths.every(function(p){ return p[0] === first; })){
+        root = first;
+        paths = paths.map(function(p){ return p.slice(1); });
+      }
+    }
+    var groups = {}, dirNames = [], configFiles = [];
+    paths.forEach(function(p, i){
+      if(p.length >= 2){
+        if(!groups[p[0]]){ groups[p[0]] = []; dirNames.push(p[0]); }
+        groups[p[0]].push(files[i]);
+      } else configFiles.push(files[i]);
+    });
+    if(!dirNames.length) return { experiment: false };
+    return { experiment: true, name: root || "experiment", groups: groups,
+             dirNames: dirNames.sort(), configFiles: configFiles };
+  }
+
+  // Pre-scan a flat set of .bin files, group by register address, and load the
+  // largest register by default (the stream selector switches between them).
   function handleHarpBins(binFiles){
-    harpFiles = null; harpAddr = null;
+    streamList = null; streamIdx = -1; currentDevice = null;
     note.style.display = "none"; results.style.display = "none";
     drop.style.display = "none"; loaded.style.display = "none";
     progress.style.display = "block"; pfill.style.width = "0%";
     ptxt.textContent = "Scanning " + binFiles.length + " file(s)…";
     setTimeout(function(){
       Promise.all(binFiles.map(readHarpHeader)).then(function(infos){
-        infos = infos.filter(function(h){ return h.ok && h.firstTs !== null; });
-        if(!infos.length){
-          progress.style.display = "none"; drop.style.display = "block";
+        var snaps = infos.filter(function(h){ return h.ok && h.snapshot; });
+        var regs = infos.filter(function(h){ return h.ok && !h.snapshot && h.firstTs !== null; });
+        if(!regs.length){
+          returnHome();
           showError("No readable Harp messages with timestamps in the selected file(s).");
           return;
         }
         var byAddr = {};
-        infos.forEach(function(h){ (byAddr[h.address] = byAddr[h.address] || []).push(h); });
+        regs.forEach(function(h){ (byAddr[h.address] = byAddr[h.address] || []).push(h); });
         var addresses = Object.keys(byAddr).map(Number).sort(function(a, b){ return a - b; });
-        var best = addresses[0], bestSize = -1;          // default: register with most data
-        addresses.forEach(function(a){
-          var s = byAddr[a].reduce(function(t, h){ return t + h.size; }, 0);
-          if(s > bestSize){ bestSize = s; best = a; }
+        // a register snapshot dump in the set can identify the device (WhoAmI)
+        var ident = snaps.length ? parseHarpSnapshot(snaps[0].file) : Promise.resolve(null);
+        ident.then(function(s){
+          if(s && s.whoAmI != null){
+            harpSchema = matchSchema(binFiles[0].name || "", s.whoAmI) || harpSchema;
+          }
+          streamList = buildStreams({ byAddr: byAddr, addresses: addresses, csvs: [] });
+          loadStream(largestStream(streamList));
         });
-        harpFiles = { byAddr: byAddr, addresses: addresses };
-        loadHarpRegister(best);
       });
     }, 0);
   }
 
-  // Concatenate every file for one register address, in timestamp order, through
-  // a single parser → one continuous timeline, then finish the load.
-  function loadHarpRegister(addr){
-    harpAddr = addr;
-    var group = harpFiles.byAddr[addr].slice().sort(function(a, b){
-      return a.firstTs < b.firstTs ? -1 : a.firstTs > b.firstTs ? 1 : 0;
+  // The loadable streams of a device folder: one per Harp register address (its
+  // files in timestamp order) plus one per CSV-ish file.
+  function buildStreams(dev){
+    var streams = [];
+    dev.addresses.forEach(function(a){
+      var group = dev.byAddr[a].slice().sort(function(x, y){
+        return x.firstTs < y.firstTs ? -1 : x.firstTs > y.firstTs ? 1 : 0;
+      });
+      var bytes = group.reduce(function(t, h){ return t + h.size; }, 0);
+      streams.push({ kind: "bin", addr: a, group: group, bytes: bytes, stats: null });
     });
-    var files = group.map(function(h){ return h.file; });
-    var totalBytes = group.reduce(function(t, h){ return t + h.size; }, 0);
-    var regName = (harpSchema && harpSchema[addr] && harpSchema[addr].name) || ("reg " + addr);
+    dev.csvs.forEach(function(f){
+      streams.push({ kind: "csv", file: f, bytes: f.size || 0, stats: null });
+    });
+    return streams;
+  }
+  function largestStream(streams){
+    var best = 0;
+    for(var i=1; i<streams.length; i++) if(streams[i].bytes > streams[best].bytes) best = i;
+    return best;
+  }
+  function streamLabel(s, schema){
+    if(s.kind === "csv") return s.file.name;
+    var reg = schema && schema.registers ? schema.registers[s.addr] : null;
+    return (reg && reg.name ? reg.name : "reg " + s.addr)
+      + " (addr " + s.addr + (s.group.length > 1 ? ", " + s.group.length + " files" : "") + ")";
+  }
+
+  // Load one stream from streamList: a register's files concatenated in
+  // timestamp order through a single parser → one continuous timeline, or a
+  // CSV file through the text path.
+  function loadStream(idx){
+    streamIdx = idx;
+    var s = streamList[idx];
+    if(s.kind === "csv"){ loadSingleFile(s.file); return; }
+    var files = s.group.map(function(h){ return h.file; });
+    var reg = harpSchema && harpSchema.registers ? harpSchema.registers[s.addr] : null;
+    var regName = (reg && reg.name) || ("reg " + s.addr);
     var loadStart = performance.now();
     note.style.display = "none"; results.style.display = "none";
     drop.style.display = "none"; loaded.style.display = "none";
+    $("explist").style.display = "none";
     progress.style.display = "block"; pfill.style.width = "0%";
     ptxt.textContent = "Reading " + files.length + " file(s)…";
     resetData();
     streamParseBinaryFiles(files).then(function(){
       if(offsets.length < 2){
-        progress.style.display = "none"; drop.style.display = "block";
+        returnHome();
         showError("Found " + offsets.length + " timestamped message(s) for " + regName + ".");
         return;
       }
       var label = files.length > 1 ? (regName + " — " + files.length + " files") : files[0].name;
+      if(currentDevice) label = currentDevice.name + " · " + (files.length > 1 ? regName : files[0].name);
       var extra = files.length > 1 ? (" · " + files.length + " files combined") : "";
-      finishLoad(label, totalBytes, loadStart, extra);
+      finishLoad(label, s.bytes, loadStart, extra);
     }).catch(function(){
-      progress.style.display = "none"; drop.style.display = "block";
+      returnHome();
       showError("Could not read the selected file(s).");
     });
   }
 
-  // Populate/show the register selector when a multi-register set is loaded.
-  function refreshRegSelector(){
+  // Populate/show the stream selector when the selection has several streams.
+  function refreshStreamSelector(){
     var sel = $("regsel");
-    if(!harpFiles || harpFiles.addresses.length < 2){ sel.style.display = "none"; sel.innerHTML = ""; return; }
+    if(!streamList || streamList.length < 2){ sel.style.display = "none"; sel.innerHTML = ""; return; }
     sel.innerHTML = "";
-    harpFiles.addresses.forEach(function(a){
-      var nm = (harpSchema && harpSchema[a] && harpSchema[a].name) || ("reg " + a);
-      var nf = harpFiles.byAddr[a].length;
+    streamList.forEach(function(s, i){
       var opt = document.createElement("option");
-      opt.value = a;
-      opt.textContent = nm + " (addr " + a + (nf > 1 ? ", " + nf + " files" : "") + ")";
-      if(a === harpAddr) opt.selected = true;
+      opt.value = i;
+      opt.textContent = streamLabel(s, harpSchema);
+      if(i === streamIdx) opt.selected = true;
       sel.appendChild(opt);
     });
     sel.style.display = "";
@@ -2118,26 +2438,27 @@ time
       buildPyramid();
       progress.style.display = "none";
       // auto-detect interval from median gap (unless user pinned one already)
-      detectedNs = median(gaps);
+      detectedNs = detectInterval(gaps);
       // epoch/wall-clock vs relative elapsed seconds: a first sample beyond
       // ~1973 in epoch terms is treated as an absolute timestamp.
       isAbsolute = firstNs > 100000000000000000n;
-      if(!intervalIn.value || intervalIn.dataset.auto !== "no"){
-        intervalNs = detectedNs;
-        intervalIn.dataset.auto = "yes";
-      } else {
-        intervalNs = parseFloat(intervalIn.value)*1e6 || detectedNs;
-      }
+      // every new stream starts from its own detected Δt — registers run at
+      // different rates, so a Δt carried over from another stream would mislead.
+      // (A manual Δt typed + applied still holds for the current capture.)
+      intervalNs = detectedNs;
+      intervalIn.dataset.auto = "yes";
       tolerance = parseFloat(tolIn.value) || 1.5;
       var cv0 = parseFloat(closeIn.value);
-      if(cv0 >= 0) closeNs = cv0*1e3;
+      if(cv0 >= 0) closeFactor = cv0;
+      closeNs = closeFactor * intervalNs;
 
       var loadMs = performance.now() - loadStart;
       var loadStr = loadMs >= 1000 ? (loadMs/1000).toFixed(2)+" s" : Math.round(loadMs)+" ms";
       $("fname").textContent = displayName;
       $("fmeta").textContent = (sizeBytes/1048576).toFixed(2)+" MB · "+offsets.length.toLocaleString()+" samples · Δt auto "+fmtGap(detectedNs)
         + (harpInfo ? " · "+harpInfo : "") + (extra || "") + " · loaded in "+loadStr;
-      refreshRegSelector();
+      refreshStreamSelector();
+      $("backexp").style.display = currentDevice ? "" : "none";
       loaded.style.display = "flex";
       applyBtn.disabled = false;
       autoBtn.disabled = false;
@@ -2145,12 +2466,20 @@ time
     }, 0);
   }
 
+  // Plain single-file load (no stream set to switch between).
   function handleFile(file){
-    harpFiles = null; harpAddr = null;        // single/CSV load: no register set
+    streamList = null; streamIdx = -1; currentDevice = null;
+    loadSingleFile(file);
+  }
+
+  // Load one file (CSV/text or a lone Harp .bin), leaving any stream list /
+  // experiment context intact — also used for a device's CSV streams.
+  function loadSingleFile(file){
     note.style.display = "none";
     results.style.display = "none";
     drop.style.display = "none";
     loaded.style.display = "none";
+    $("explist").style.display = "none";
     progress.style.display = "block";
     pfill.style.width = "0%";
     ptxt.textContent = "Reading " + file.name + "…";
@@ -2161,19 +2490,309 @@ time
       var parse = isBinary ? streamParseBinary(file) : streamParse(file);
       parse.then(function(){
         if(offsets.length < 2){
-          progress.style.display = "none";
-          drop.style.display = "block";
+          returnHome();
           showError(isBinary
             ? "Found "+offsets.length+" timestamped message(s). Expecting a Harp .bin: a stream of fixed-stride register messages with timestamps."
             : "Found "+offsets.length+" timestamped row(s). Expecting a CSV with a time column like 2026-06-09 22:20:33.475999832+00:00 in the first field.");
           return;
         }
-        finishLoad(file.name, file.size, loadStart);
+        var label = currentDevice ? (currentDevice.name + " · " + file.name) : file.name;
+        finishLoad(label, file.size, loadStart);
       }).catch(function(){
-        progress.style.display = "none"; drop.style.display = "block";
+        returnHome();
         showError("Could not read that file.");
       });
     });
+  }
+
+  // ---------- experiment mode ----------
+  // Build the device list from a dropped experiment folder: every sub-folder is
+  // one device. Each device's .bin files are header-scanned (register grouping
+  // + snapshot detection, first KB only) so the list shows its structure
+  // immediately; message/dropout numbers follow from the background scan.
+  function startExperiment(split){
+    teardownExperiment();
+    note.style.display = "none"; results.style.display = "none";
+    drop.style.display = "none"; loaded.style.display = "none";
+    progress.style.display = "block"; pfill.style.width = "0%";
+    ptxt.textContent = "Scanning experiment structure…";
+    var devices = split.dirNames.map(function(dir){
+      var bins = [], csvs = [], other = 0, bytes = 0;
+      split.groups[dir].forEach(function(f){
+        var n = (f.name || "").toLowerCase();
+        bytes += f.size || 0;
+        if(/\.(bin|harp|dat)$/.test(n)) bins.push(f);
+        else if(/\.(csv|txt|tsv|log)$/.test(n)) csvs.push(f);
+        else other++;
+      });
+      return { name: dir, binFiles: bins, csvs: csvs, other: other, bytes: bytes,
+               byAddr: {}, addresses: [], snapshot: null, schema: null, streams: [], _card: null };
+    });
+    var work = devices.map(function(dev){
+      return Promise.all(dev.binFiles.map(readHarpHeader)).then(function(infos){
+        var snaps = infos.filter(function(h){ return h.ok && h.snapshot; });
+        infos.forEach(function(h){
+          if(h.ok && !h.snapshot && h.firstTs !== null)
+            (dev.byAddr[h.address] = dev.byAddr[h.address] || []).push(h);
+        });
+        dev.addresses = Object.keys(dev.byAddr).map(Number).sort(function(a, b){ return a - b; });
+        if(snaps.length) return parseHarpSnapshot(snaps[0].file).then(function(s){ dev.snapshot = s; });
+      });
+    });
+    Promise.all(work).then(function(){
+      devices.forEach(function(dev){
+        dev.schema = matchSchema(dev.name, dev.snapshot && dev.snapshot.whoAmI);
+        dev.streams = buildStreams(dev);
+      });
+      experiment = { name: split.name, configFiles: split.configFiles, devices: devices };
+      progress.style.display = "none";
+      renderExperiment();
+      startScan();
+    });
+  }
+
+  function teardownExperiment(){
+    cancelScan();
+    experiment = null; currentDevice = null;
+    $("explist").style.display = "none";
+  }
+
+  var ESC_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return ESC_MAP[c]; }); }
+
+  function renderExperiment(){
+    $("expname").textContent = experiment.name;
+    var nDev = experiment.devices.length, nCfg = experiment.configFiles.length;
+    $("expmeta").textContent = nDev + " device" + (nDev > 1 ? "s" : "")
+      + (nCfg ? " · " + nCfg + " config file" + (nCfg > 1 ? "s" : "") : "");
+    var grid = $("devgrid");
+    grid.innerHTML = "";
+    experiment.devices.forEach(function(dev){
+      var card = document.createElement("div");
+      card.className = "devcard" + (dev.streams.length ? "" : " inert");
+      dev._card = card;
+      fillDevCard(dev);
+      if(dev.streams.length) card.addEventListener("click", function(){ openDevice(dev); });
+      grid.appendChild(card);
+    });
+    $("explist").style.display = "block";
+  }
+
+  // (Re)build one device card: identity line, file inventory, and a stream
+  // table whose stats cells fill in as the background scan completes.
+  function fillDevCard(dev){
+    var h = '<div class="devtop"><span class="devname">' + esc(dev.name) + '</span>';
+    h += dev.schema
+      ? '<span class="devbadge known" title="device.yml schema applied">' + esc(dev.schema.device || "known") + '</span>'
+      : '<span class="devbadge">unknown device</span>';
+    h += '</div>';
+    var bits = [];
+    if(dev.snapshot) bits.push(dev.snapshot.registers.length + " registers"
+      + (dev.snapshot.whoAmI != null ? " · WhoAmI " + dev.snapshot.whoAmI : ""));
+    if(dev.other) bits.push(dev.other + " other file" + (dev.other > 1 ? "s" : ""));
+    bits.push((dev.bytes/1048576).toFixed(1) + " MB");
+    h += '<div class="devinfo">' + esc(bits.join(" · ")) + '</div>';
+    if(dev.streams.length){
+      h += '<table><thead><tr><th>stream</th><th class="r">msgs</th><th class="r">Δt</th><th class="r">missing</th></tr></thead><tbody>';
+      dev.streams.forEach(function(s){
+        var st = s.stats;
+        h += '<tr><td>' + esc(streamLabel(s, dev.schema)) + '</td>';
+        if(st){
+          h += '<td class="r">' + st.count.toLocaleString() + '</td>'
+             + '<td class="r">' + (st.dtNs > 0 ? fmtGap(st.dtNs) : "—") + '</td>'
+             + '<td class="r ' + (st.missing ? "drops" : "ok") + '">' + st.missing.toLocaleString()
+             + (st.drops ? ' (' + st.drops + '×)' : '') + '</td>';
+        } else h += '<td class="r">…</td><td class="r">…</td><td class="r">…</td>';
+        h += '</tr>';
+      });
+      h += '</tbody></table>';
+    } else {
+      h += '<div class="devinfo">no loadable streams</div>';
+    }
+    dev._card.innerHTML = h;
+  }
+
+  // Open one device of the experiment in the normal analysis view, with its
+  // matched schema active and its streams in the selector.
+  function openDevice(dev){
+    pauseScan();
+    currentDevice = dev;
+    harpSchema = dev.schema || null;
+    streamList = dev.streams;
+    $("explist").style.display = "none";
+    loadStream(largestStream(streamList));
+  }
+
+  // ---------- background summary scan ----------
+  // Sequentially walks every stream of every device to fill the per-register
+  // summaries (message count, Δt estimate, dropouts). Only timestamps are
+  // decoded and nothing is retained beyond the running stats, so the scan never
+  // touches the loaded capture's globals. Paused while a device is open;
+  // cancelled when the experiment closes.
+  var scanEpoch = 0;
+
+  // Running stats over a gap stream: the first gaps are buffered to estimate Δt
+  // (median, like the main analyzer), then every gap — buffered and streamed —
+  // is judged against tolerance×Δt.
+  function makeStatsAcc(){
+    var CAP = 65536;
+    var count = 0, prev = null, buf = [], dtNs = 0, settled = false, drops = 0, missing = 0;
+    function judge(g){
+      if(dtNs > 0 && g > dtNs * tolerance){
+        drops++;
+        missing += Math.max(1, Math.round(g / dtNs) - 1);
+      }
+    }
+    function settle(){
+      settled = true;
+      dtNs = buf.length ? detectInterval(buf) : 0;
+      for(var i=0; i<buf.length; i++) judge(buf[i]);
+      buf = null;
+    }
+    function add(tsNs){
+      count++;
+      if(prev !== null){
+        var g = Number(tsNs - prev);
+        if(settled) judge(g);
+        else { buf.push(g); if(buf.length >= CAP) settle(); }
+      }
+      prev = tsNs;
+    }
+    function done(){
+      if(!settled) settle();
+      return { count: count, dtNs: dtNs, drops: drops, missing: missing };
+    }
+    return { add: add, done: done };
+  }
+
+  // Timestamp-only Harp walker (stride from the first message, like the full
+  // parser, but no payload decode). Feeds an acc; returns the chunk carry.
+  function makeHarpStatsWalker(acc){
+    var inited = false, stride = 0, hasTs = false;
+    function feed(buf){
+      var view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+      var n = buf.length, i = 0;
+      if(!inited){
+        if(n < 11) return buf;
+        stride = view.getUint8(1) + 2;
+        hasTs = (view.getUint8(4) & HARP_TS_MASK) !== 0;
+        if(stride < 6) return new Uint8Array(0);     // not walkable — give up
+        inited = true;
+      }
+      for(; i + stride <= n; i += stride){
+        if(!hasTs) continue;
+        acc.add(BigInt(view.getUint32(i+5, true))*1000000000n + BigInt(view.getUint16(i+9, true))*32000n);
+      }
+      return i < n ? buf.slice(i) : new Uint8Array(0);
+    }
+    return { feed: feed };
+  }
+
+  // Timestamp-only CSV line feeder (first field of each row).
+  function makeCsvStatsWalker(acc){
+    function feed(line){
+      if(!line) return;
+      var c = line.indexOf(",");
+      var field = (c === -1 ? line : line.slice(0, c)).trim();
+      if(!field) return;
+      var ts = parseTsNs(field);
+      if(ts !== null) acc.add(ts);
+    }
+    return { feed: feed };
+  }
+
+  // Read one stream chunk by chunk through its stats walker. Between chunks the
+  // queue's state is honored: bail silently if the scan was cancelled (epoch
+  // changed), park the continuation on scanState.cont while paused.
+  function scanStream(stream, epoch){
+    return new Promise(function(resolve){
+      var acc = makeStatsAcc();
+      var CHUNK = 8 * 1024 * 1024;
+      var binary = stream.kind === "bin";
+      var files = binary ? stream.group.map(function(h){ return h.file; }) : [stream.file];
+      var walker = binary ? makeHarpStatsWalker(acc) : makeCsvStatsWalker(acc);
+      var fi = 0;
+      function step(next){
+        if(!scanState || scanState.epoch !== epoch) return;      // cancelled
+        if(scanState.paused){ scanState.cont = next; return; }   // parked; resumed later
+        setTimeout(next, 0);
+      }
+      function nextFile(){
+        if(fi >= files.length){ resolve(acc.done()); return; }
+        var file = files[fi++];
+        var pos = 0, total = file.size || 0;
+        var carry = new Uint8Array(0), tail = "";
+        var decoder = binary ? null : new TextDecoder("utf-8");
+        var fr = new FileReader();
+        fr.onerror = function(){ resolve(null); };
+        fr.onload = function(){
+          var last = pos >= total;
+          if(binary){
+            carry = walker.feed(concatBytes(carry, new Uint8Array(fr.result)));
+          } else {
+            var combined = tail + decoder.decode(new Uint8Array(fr.result), { stream: !last });
+            var lines = combined.split(/\r?\n/);
+            tail = last ? "" : lines.pop();
+            for(var j=0; j<lines.length; j++) walker.feed(lines[j]);
+          }
+          step(last ? nextFile : readChunk);
+        };
+        function readChunk(){
+          var end = Math.min(pos + CHUNK, total);
+          var slice = file.slice(pos, end);
+          pos = end;
+          fr.readAsArrayBuffer(slice);
+        }
+        step(readChunk);
+      }
+      nextFile();
+    });
+  }
+
+  function startScan(){
+    scanEpoch++;
+    var queue = [];
+    experiment.devices.forEach(function(dev){
+      dev.streams.forEach(function(s){ queue.push({ dev: dev, stream: s }); });
+    });
+    scanState = { epoch: scanEpoch, paused: false, queue: queue, idx: 0, cont: null };
+    pumpScan();
+  }
+  function pumpScan(){
+    if(!scanState || scanState.paused) return;
+    updateScanLine();
+    if(scanState.idx >= scanState.queue.length) return;
+    var ep = scanState.epoch, task = scanState.queue[scanState.idx];
+    scanStream(task.stream, ep).then(function(res){
+      if(!scanState || scanState.epoch !== ep) return;
+      task.stream.stats = res || { count: 0, dtNs: 0, drops: 0, missing: 0 };
+      if(task.dev._card) fillDevCard(task.dev);
+      scanState.idx++;
+      pumpScan();
+    });
+  }
+  function pauseScan(){ if(scanState) scanState.paused = true; }
+  function resumeScan(){
+    if(!scanState || !scanState.paused) return;
+    scanState.paused = false;
+    if(scanState.cont){ var c = scanState.cont; scanState.cont = null; setTimeout(c, 0); }
+    else pumpScan();
+  }
+  function cancelScan(){
+    scanEpoch++;          // orphans any in-flight chunk reads
+    scanState = null;
+    updateScanLine();
+  }
+  function updateScanLine(){
+    var el = $("scanline");
+    if(!scanState || !scanState.queue.length){ el.textContent = ""; return; }
+    if(scanState.idx >= scanState.queue.length){
+      el.textContent = "summary scan complete · " + scanState.queue.length + " streams";
+      return;
+    }
+    var t = scanState.queue[scanState.idx];
+    el.textContent = "scanning " + (scanState.idx + 1) + "/" + scanState.queue.length + " — "
+      + t.dev.name + " · " + streamLabel(t.stream, t.dev.schema);
   }
 
   // drag/drop + click
@@ -2233,9 +2852,21 @@ time
     fileInput.value = "";
     fileInput.click();
   });
-  // switch which Harp register is concatenated/analyzed
+  // switch which stream (Harp register / CSV) of the selection is analyzed
   $("regsel").addEventListener("change", function(){
-    if(harpFiles) loadHarpRegister(+this.value);
+    if(streamList) loadStream(+this.value);
+  });
+  // back from a device's analysis view to the experiment device list
+  $("backexp").addEventListener("click", function(){
+    currentDevice = null; streamList = null; streamIdx = -1;
+    loaded.style.display = "none"; results.style.display = "none";
+    note.style.display = "none";
+    returnHome();
+  });
+  // close the experiment and return to the drop zone
+  $("expclose").addEventListener("click", function(){
+    teardownExperiment();
+    drop.style.display = "block";
   });
 
   // apply settings
@@ -2245,7 +2876,8 @@ time
     var tv = parseFloat(tolIn.value);
     if(tv >= 1){ tolerance = tv; }
     var cv = parseFloat(closeIn.value);
-    if(cv >= 0){ closeNs = cv*1e3; }
+    if(cv >= 0){ closeFactor = cv; }
+    closeNs = closeFactor * intervalNs;
     saveSettings();
     if(offsets.length >= 2) render();
   });
@@ -2254,6 +2886,7 @@ time
     if(offsets.length < 2) return;
     intervalNs = detectedNs;
     intervalIn.dataset.auto = "yes";
+    closeNs = closeFactor * intervalNs;
     saveSettings();
     render();   // render() refreshes the Δt field from intervalNs
   });
@@ -2286,6 +2919,8 @@ time
   // restore persisted settings and reflect them into the controls
   loadSettings();
   reflectSettings();
+  loadDeviceSchemas();
+  refreshSchemaStat();
 
   bindHover();
 })();

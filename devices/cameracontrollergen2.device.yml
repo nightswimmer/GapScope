@@ -1,0 +1,221 @@
+%YAML 1.1
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/harp-tech/reflex-generator/main/schema/device.json
+device: CameraControllerGen2
+whoAmI: 1170
+firmwareVersion: "1.2"
+hardwareTargets: "1.2"
+registers:
+  Cam0Event: &cameraEvent
+    address: 32
+    type: U8
+    access: Event
+    maskType: CameraEvents
+    description: Signals a frame was triggered on camera 0
+  Cam1Event:
+    <<: *cameraEvent
+    address: 33
+    description: Signals a frame was triggered on camera 1
+  ConfigureCam0Event: &configureEvent
+    address: 34
+    type: U8
+    access: Write
+    maskType: EventConfiguration
+    description: Configures the event on camera 0
+  ConfigureCam1Event:
+    <<: *configureEvent
+    address: 35
+    description: Configures the event on camera 0
+  StartAndStop: &startStop
+    address: 36
+    type: U8
+    access: Write
+    maskType: CameraFlags
+    description: Starts and stops the cameras immediately
+  StartAndStopTimestamped:
+    <<: *startStop
+    address: 37
+    description: Starts and stops the cameras on a timestamp
+  StartTimestamp: &timestamp
+    address: 38
+    type: U32
+    access: Write
+    description: Specifies when the camera will start to acquire frames
+  StopTimestamp:
+    <<: *timestamp
+    address: 39
+    description: Specifies when the camera will stop acquiring frames
+  Reserved0: &reserved
+    address: 40
+    type: U8
+    access: Read
+    description: Reserved for future use
+    visibility: private
+  Reserved1:
+    <<: *reserved
+    address: 41
+  TriggerConfigCam0: &triggerConfig
+    address: 42
+    type: U8
+    access: Write
+    maskType: TriggerSource
+    description: Configures the trigger source for camera 0
+  TriggerInvertedCam0: &triggerInverted
+    address: 43
+    type: U8
+    access: Write
+    maskType: TriggerInverted
+    description: Configures whether trigger is inverted for camera 0
+  StrobeSourceCam0: &strobeSource
+    address: 44
+    type: U8
+    access: Write
+    maskType: StrobeSource
+    description: Select the strobe source line for camera 0. The direct line or with pull-up.
+  TriggerFrequencyCam0: &triggerFrequency
+    address: 45
+    type: U16
+    access: Write
+    description: Specifies the trigger frequency for camera 0 between 1 and 1000
+  TriggerDurationCam0: &triggerDuration
+    address: 46
+    type: U16
+    access: Write
+    description: Sets the duration of the trigger pulse, in microseconds (minimum is 100), for camera 0
+  Reserved2:
+    <<: *reserved
+    address: 47
+  Reserved3:
+    <<: *reserved
+    address: 48
+  TriggerConfigCam1:
+    <<: *triggerConfig
+    address: 49
+    description: Configures the trigger source for camera 1
+  TriggerInvertedCam1:
+    <<: *triggerInverted
+    address: 50
+    description: Configures whether trigger is inverted for camera 1
+  StrobeSourceCam1:
+    <<: *strobeSource
+    address: 51
+    description: Select the strobe source line for camera 1. The direct line or with pull-up.
+  TriggerFrequencyCam1:
+    <<: *triggerFrequency
+    address: 52
+    description: Specifies the trigger frequency for camera 1 between 1 and 1000
+  TriggerDurationCam1:
+    <<: *triggerDuration
+    address: 53
+    description: Sets the duration of the trigger pulse, in microseconds (minimum is 100), for camera 1
+  Reserved4:
+    <<: *reserved
+    address: 54
+  Reserved5:
+    <<: *reserved
+    address: 55
+  ConfigureOutput0: &configureOutput
+    address: 56
+    type: U8
+    access: Write
+    maskType: OutputConfiguration
+    description: Configures the digital Output 0
+  ConfigureOutput1:
+    <<: *configureOutput
+    address: 57
+    description: Configures the digital Output 1
+  Reserved6:
+    <<: *reserved
+    address: 58
+  Reserved7:
+    <<: *reserved
+    address: 59
+  OutputSet: &output
+    address: 60
+    type: U8
+    access: Write
+    maskType: DigitalOutputs
+    description: Set the specified digital output lines
+  OutputClear:
+    <<: *output
+    address: 61
+    description: Clear the specified digital output lines
+  OutputToggle:
+    <<: *output
+    address: 62
+    description: Toggle the specified digital output lines
+  OutputState:
+    <<: *output
+    address: 63
+    description: Write the state of all digital output lines
+  InputState:
+    address: 64
+    type: U8
+    access: Event
+    maskType: DigitalInputs
+    description: Specifies the state of the digital Input 0
+bitMasks:
+  CameraEvents:
+    description: Specifies active camera event flags.
+    bits:
+      Trigger: 0x1
+      Strobe: 0x2
+  CameraFlags:
+    description: Specifies operation flags for camera control.
+    bits:
+      StartCam0: 0x1
+      StartCam1: 0x2
+      StopCam0: 0x4
+      StopCam1: 0x8
+      SingleFrameCam0: 0x10
+      SingleFrameCam1: 0x20
+  DigitalInputs:
+    description: Specifies the state of the digital input lines.
+    bits:
+      DI0: 0x1
+  DigitalOutputs:
+    description: Specifies the state of the digital output lines.
+    bits:
+      DO0: 0x1
+      DO1: 0x2
+groupMasks:
+  EventConfiguration:
+    description: Specifies the operation of the camera events.
+    values:
+      EventOnStrobe: {value: 0, description: Event is sent when the strobe goes from LOW to HIGH.}
+      EventOnTrigger: {value: 1, description: Event is sent when the trigger goes from LOW to HIGH.}
+  TriggerSource:
+    description: Specifies the source for generating the trigger signal.
+    values:
+      Internal: {value: 0, description: Trigger is controlled by the device TriggerXCamX registers.}
+      InternalReserved0: {value: 1, description: "Reserved, do not use."}
+      Internal1Hz: {value: 2, description: Trigger is synchronously generated at 1Hz.}
+      Internal2Hz: {value: 3, description: Trigger is synchronously generated at 2Hz.}
+      Internal5Hz: {value: 4, description: Trigger is synchronously generated at 5Hz.}
+      Internal10Hz: {value: 5, description: Trigger is synchronously generated at 100Hz.}
+      InternalReserved1: {value: 6, description: "Reserved, do not use."}
+      Internal20Hz: {value: 7, description: Trigger is synchronously generated at 20Hz.}
+      InternalReserved2: {value: 8, description: "Reserved, do not use."}
+      Internal40Hz: {value: 9, description: Trigger is synchronously generated at 40Hz.}
+      Internal50Hz: {value: 10, description: Trigger is synchronously generated at 50Hz.}
+      InternalReserved3: {value: 11, description: "Reserved, do not use."}
+      InternalReserved4: {value: 12, description: "Reserved, do not use."}
+      Internal100Hz: {value: 13, description: Trigger is synchronously generated at 100Hz.}
+      Internal125Hz: {value: 14, description: Trigger is synchronously generated at 125Hz.}
+      Input0: {value: 15, description: Trigger is controlled by the external input 0.}
+  TriggerInverted:
+    description: Specifies whether the camera trigger signal is inverted.
+    values:
+      "No": {value: 0, description: Selects the direct line.}
+      "Yes": {value: 1, description: Selects the pull-up line.}
+  StrobeSource:
+    description: Specifies the source for reading the strobe signal.
+    values:
+      Direct: {value: 0, description: Selects the direct line.}
+      PullUp: {value: 1, description: Selects the pull-up line.}
+  OutputConfiguration:
+    description: Specifies the operation of the digital output line.
+    values:
+      Software: {value: 0, description: The digital output is controlled exclusively by software commands.}
+      TriggerCamera: {value: 1, description: The digital output follows the corresponding camera trigger (not inverted).}
+      StrobeCamera: {value: 2, description: The digital output follows the corresponding camera strobe.}
