@@ -174,6 +174,7 @@
   .stype.constant{color:var(--phosphor);border-color:rgba(52,224,196,.35)}
   .stype.burst{color:var(--accent);border-color:rgba(74,168,255,.4)}
   .stype.pontual{color:var(--text-dim)}
+  .stype.video{color:#c79bff;border-color:rgba(170,130,255,.45)}
   .devcard table{font-size:12px}
   .devcard thead th{padding:6px 8px}
   .devcard tbody td{padding:5px 8px;border-bottom:1px solid var(--bg-grid)}
@@ -330,6 +331,23 @@
   @media (prefers-reduced-motion:reduce){
     .results{animation:none}
   }
+
+  /* camera video panel + trace playhead */
+  #trace-ph,#chart-ph{position:absolute;pointer-events:none;cursor:default;z-index:4}
+  .vidhead{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .vidhead .eyebrow{margin:0}
+  .vidbtn{font-family:var(--mono);font-size:12px;background:var(--panel);color:var(--text);
+    border:1px solid var(--line);border-radius:6px;padding:5px 12px;cursor:pointer}
+  .vidbtn:hover:not(:disabled){border-color:var(--phosphor)}
+  .vidbtn:disabled{opacity:.4;cursor:default}
+  .vidspeed{background:var(--panel);color:var(--text);border:1px solid var(--line);
+    border-radius:6px;font-family:var(--mono);font-size:12px;padding:4px 6px;cursor:pointer}
+  .vidclip{color:var(--text-dim);font-size:12px}
+  .vidtime{color:var(--phosphor);font-size:12px;margin-left:auto;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .vidwrap{position:relative;border:1px solid var(--line);border-radius:10px;background:#000;overflow:hidden;
+    text-align:center;min-height:60px}
+  #vid-canvas,#chart-vid{display:inline-block;width:auto;max-width:100%;max-height:62vh;cursor:default;vertical-align:middle}
+  .vidnote{color:var(--text-dim);font-size:12px;padding:18px;text-align:center}
 </style>
 </head>
 <body>
@@ -408,10 +426,10 @@ time
       <div class="expctl">
         <span class="chartbar" id="chartbar" style="display:none">
           <span id="chartcount">0 selected</span>
-          <button type="button" class="reload" id="chartviz" disabled title="Plot the selected registers' values on one chart">Visualize</button>
+          <button type="button" class="reload" id="chartviz" disabled title="Build the visualizer from the selected streams">Visualize</button>
           <button type="button" class="reload" id="chartcancel">Cancel</button>
         </span>
-        <button type="button" class="reload" id="chartnew" title="Build a combined value chart — then click registers across devices to add them">＋ New chart</button>
+        <button type="button" class="reload" id="chartnew" title="Build a visualizer — then click registers, columns, or videos across devices to add them">＋ New Visualizer</button>
       </div>
     </div>
     <div class="scanline" id="scanline"></div>
@@ -421,18 +439,32 @@ time
   <!-- floating breakdown popup for a device card's potential-problems cell -->
   <div class="readout" id="prob-ro"></div>
 
-  <!-- combined value chart -->
+  <!-- visualizer: combined value lines + optional camera video, shared time axis -->
   <div class="chartview" id="chartview">
     <div class="exphead">
-      <div class="file"><span class="dot"></span><span class="name">Combined value chart</span><span class="expmeta" id="chartmeta"></span></div>
+      <div class="file"><span class="dot"></span><span class="name">Visualizer</span><span class="expmeta" id="chartmeta"></span></div>
       <div class="expctl">
+        <span class="vidhead" id="chart-vidctl" style="display:none">
+          <button class="vidbtn" id="chart-vid-play" disabled>▶ Play</button>
+          <select class="vidspeed" id="chart-vid-speed" title="Playback speed">
+            <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+          </select>
+          <span class="vidclip" id="chart-vid-clip"></span>
+          <span class="vidtime" id="chart-vid-time"></span>
+        </span>
         <label class="chk"><input type="checkbox" id="chart-norm" checked> Normalize each line</label>
         <span class="hint">scroll to zoom · drag to pan · double-click to reset</span>
       </div>
     </div>
+    <div class="vidwrap" id="chart-vidwrap" style="display:none">
+      <canvas id="chart-vid" width="640" height="360"></canvas>
+      <div class="vidnote" id="chart-vid-note" style="display:none"></div>
+    </div>
     <div class="legend" id="chart-legend"></div>
     <div class="canvas-wrap" id="chart-wrap">
       <canvas id="chart"></canvas>
+      <canvas id="chart-ph"></canvas>
       <div class="readout" id="chart-ro"></div>
     </div>
     <div class="axis"><span id="chart-tstart">0 s</span><span id="chart-tmid"></span><span id="chart-tend"></span></div>
@@ -467,6 +499,23 @@ time
 
     <div class="stats" id="statgrid"></div>
 
+    <div class="block" id="video-block" style="display:none">
+      <div class="vidhead">
+        <p class="eyebrow">Camera video</p>
+        <button class="vidbtn" id="vid-play" disabled>▶ Play</button>
+        <select class="vidspeed" id="vid-speed" title="Playback speed">
+          <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+        </select>
+        <span class="vidclip" id="vid-clip"></span>
+        <span class="vidtime" id="vid-time"></span>
+      </div>
+      <div class="vidwrap" id="vid-wrap">
+        <canvas id="vid-canvas" width="640" height="360"></canvas>
+        <div class="vidnote" id="vid-note" style="display:none"></div>
+      </div>
+    </div>
+
     <div class="block">
       <div class="block-head">
         <p class="eyebrow" style="margin:0">Capture trace</p>
@@ -495,6 +544,7 @@ time
       <div class="canvas-wrap" id="trace-wrap">
         <canvas id="trace"></canvas>
         <canvas id="trace-ov"></canvas>
+        <canvas id="trace-ph"></canvas>
         <div class="readout" id="trace-ro"></div>
       </div>
       <div class="axis"><span id="t-start">0 s</span><span id="t-mid"></span><span id="t-end"></span></div>
@@ -2886,6 +2936,9 @@ time
           if(newSpan < minWindowNs) newSpan = minWindowNs;   // respect the zoom floor
           viewStart = mid - newSpan/2; viewEnd = mid + newSpan/2;
           clampView(); scheduleDraw();
+        } else if(vidActive && stats){
+          // a click (no drag) on the trace jumps the video to that time
+          vidSeekFromOff(viewStart + (xa/trect.width)*(viewEnd - viewStart));
         }
       }
       if(hmDown){
@@ -2948,6 +3001,7 @@ time
   // Return to the "choose something" view after an error or a back action:
   // the experiment device list when an experiment is open, else the drop zone.
   function returnHome(){
+    vidDetach();
     progress.style.display = "none";
     $("controls").style.display = "none";
     if(experiment){ $("explist").style.display = "block"; resumeScan(); }
@@ -2968,6 +3022,7 @@ time
   // From a device analysis view or the combined chart, return to the device list.
   function goBackToDevices(){
     if(!experiment) return;
+    vidDetach();
     $("chartview").style.display = "none";
     currentDevice = null; streamList = null; streamIdx = -1;
     loaded.style.display = "none"; results.style.display = "none";
@@ -3263,6 +3318,9 @@ time
       loaded.style.display = "flex";
       autoBtn.disabled = false;
       render();
+      // a camera device shows its video synced to the trace; non-device / non-video loads hide it
+      if(currentDevice && currentDevice.videos && currentDevice.videos.length) vidAttach(currentDevice);
+      else vidDetach();
       updateHeaderNav();
     }, 0);
   }
@@ -3319,15 +3377,16 @@ time
     progress.style.display = "block"; pfill.style.width = "0%";
     ptxt.textContent = "Scanning experiment structure…";
     var devices = split.dirNames.map(function(dir){
-      var bins = [], csvs = [], other = 0, bytes = 0;
+      var bins = [], csvs = [], videos = [], other = 0, bytes = 0;
       split.groups[dir].forEach(function(f){
         var n = (f.name || "").toLowerCase();
         bytes += f.size || 0;
         if(/\.(bin|harp|dat)$/.test(n)) bins.push(f);
         else if(/\.(csv|txt|tsv|log)$/.test(n)) csvs.push(f);
+        else if(/\.(avi|mp4|m4v|mkv|mov|webm)$/.test(n)) videos.push(f);
         else other++;
       });
-      return { name: dir, binFiles: bins, csvs: csvs, other: other, bytes: bytes,
+      return { name: dir, binFiles: bins, csvs: csvs, videos: videos, other: other, bytes: bytes,
                byAddr: {}, addresses: [], snapshot: null, schema: null, streams: [], _card: null, _expanded: {} };
     });
     var work = devices.map(function(dev){
@@ -3369,6 +3428,7 @@ time
 
   function teardownExperiment(){
     cancelScan();
+    vidDetach();
     experiment = null; currentDevice = null;
     chartEditMode = false; chartSel = {}; chartData = null;
     $("chartview").style.display = "none";
@@ -3405,8 +3465,14 @@ time
           fillDevCard(dev);
           return;
         }
+        var vrow = e.target.closest("tr[data-vid]");
         var row = e.target.closest("tr[data-i]");
-        if(chartEditMode){ if(row) toggleChartRow(dev, row); return; }
+        if(chartEditMode){
+          if(vrow) toggleVideoSel(dev);
+          else if(row) toggleChartRow(dev, row);
+          return;
+        }
+        if(vrow){ openDevice(dev, -1); return; }   // open the device (video shows in its trace view)
         openDevice(dev, row ? +row.getAttribute("data-i") : -1);
       });
       grid.appendChild(card);
@@ -3455,10 +3521,12 @@ time
     var bits = [];
     if(dev.snapshot) bits.push(dev.snapshot.registers.length + " registers"
       + (dev.snapshot.whoAmI != null ? " · WhoAmI " + dev.snapshot.whoAmI : ""));
+    if(dev.videos && dev.videos.length) bits.push(dev.videos.length + " video" + (dev.videos.length > 1 ? "s" : ""));
     if(dev.other) bits.push(dev.other + " other file" + (dev.other > 1 ? "s" : ""));
     bits.push((dev.bytes/1048576).toFixed(1) + " MB");
     h += '<div class="devinfo">' + esc(bits.join(" · ")) + '</div>';
-    if(dev.streams.length){
+    var hasVideo = dev.videos && dev.videos.length;
+    if(dev.streams.length || hasVideo){
       h += '<table><thead><tr><th>stream</th><th>type</th><th class="r">msgs</th><th class="r">Δt</th><th class="r warnh" title="Potential problems — missing, too-close, out-of-order, duplicate &amp; unparseable. Hover a count for details.">⚠</th></tr></thead><tbody>';
       dev.streams.forEach(function(s, i){
         var st = s.stats;
@@ -3511,6 +3579,15 @@ time
              + esc(nm) + '</td><td></td><td class="r"></td><td class="r"></td><td class="r"></td></tr>';
         });
       });
+      // camera video row — selectable into the visualizer, or opens the device
+      if(hasVideo){
+        var vsel = isVideoSelected(dev.name);
+        h += '<tr data-vid="1"' + (vsel ? ' class="csel"' : '')
+           + ' title="' + (chartEditMode ? "Add/remove the camera video" : "Open the camera video") + '">'
+           + '<td>🎞 video <span class="vcount">' + dev.videos.length + '</span></td>'
+           + '<td><span class="stype video" title="camera video">V</span></td>'
+           + '<td class="r">—</td><td class="r">—</td><td class="r">—</td></tr>';
+      }
       h += '</tbody></table>';
     } else {
       h += '<div class="devinfo">no loadable streams</div>';
@@ -3531,6 +3608,505 @@ time
     var i = (idx >= 0 && idx < streamList.length) ? idx : largestStream(streamList);
     loadStream(i);
   }
+
+  // ---------- camera video (WebCodecs playback synced to the trace) ----------
+  // A device's video clips (long recordings are split into hourly .avi files) are
+  // demuxed and decoded on demand and driven by a single position on the shared
+  // experiment time axis (vidPosOff, ns from the experiment origin). Each frame's
+  // wall-clock time comes from the paired per-frame CSV, so the trace playhead is
+  // exact across dropped frames and clip boundaries. AVI carries H.264 in Annex-B
+  // with in-band SPS/PPS; the browser's VideoDecoder does the decoding.
+  var VID_MARGIN = 8;        // frames decoded past a paused target so held B-frames flush out
+  var vidMode = "trace";     // "trace" → device analysis view; "chart" → the visualizer
+  var vidDev = null, vidClips = null, vidActiveIdx = -1, vidActive = false, vidEpoch = 0;
+  var vidPlaying = false, vidPosOff = 0, vidPlayPerf = 0, vidPlayStartOff = 0, vidSpeed = 1;
+  // a seek holds the playhead at its target until that frame is actually decoded
+  // and shown (then resumes), so the decoder never chases a moving target
+  var vidSeekHold = false, vidShownPidx = -1, vidForceReseek = false, vidNeedSeekDecode = false;
+  var vidDecoder = null, vidDisplay = [], vidOutCount = 0, vidSessionBase = -1;
+  var vidFeedIdx = 0, vidFeedLimit = 0, vidPumping = false, vidFeeding = false, vidFlushed = false;
+  var vidPhReq = 0, vidLoadingClip = false;
+  var vidHasCodec = (typeof window !== "undefined" && typeof window.VideoDecoder !== "undefined");
+
+  // The origin offsets are measured from. The Visualizer anchors its value lines
+  // to the experiment timeline start, so the video must use the same origin — and
+  // it may be reached without a stream load (refOriginNs still null) via the chart.
+  function vidOriginNs(){
+    return (experiment && experiment.timeline) ? experiment.timeline.startNs
+         : (refOriginNs !== null ? refOriginNs : 0n);
+  }
+  function vidStripExt(n){ return String(n || "").replace(/\.[^.]+$/, ""); }
+  function vidFcc(dv, o){ return String.fromCharCode(dv.getUint8(o), dv.getUint8(o+1), dv.getUint8(o+2), dv.getUint8(o+3)); }
+  function vidReadBuf(file, start, len){ return file.slice(start, start + len).arrayBuffer(); }
+
+  // Walk the top-level RIFF chunks (header reads only) to find hdrl / movi / idx1.
+  function vidScanTopLevel(file){
+    return vidReadBuf(file, 0, 12).then(function(hb){
+      var head = new DataView(hb);
+      if(vidFcc(head, 0) !== "RIFF" || vidFcc(head, 8) !== "AVI ") throw new Error("not a RIFF/AVI file");
+      var fileSize = file.size, out = { hdrlPos:0, hdrlSize:0, moviFourccPos:0, idx1Pos:0, idx1Size:0 }, pos = 12;
+      function step(){
+        if(pos + 8 > fileSize) return out;
+        return vidReadBuf(file, pos, 12).then(function(b){
+          var dv = new DataView(b), id = vidFcc(dv, 0), size = dv.getUint32(4, true);
+          if(id === "LIST"){
+            var lt = vidFcc(dv, 8);
+            if(lt === "hdrl"){ out.hdrlPos = pos + 12; out.hdrlSize = size - 4; }
+            else if(lt === "movi"){ out.moviFourccPos = pos + 8; }
+          } else if(id === "idx1"){ out.idx1Pos = pos + 8; out.idx1Size = size; }
+          pos += 8 + size + (size & 1);
+          return step();
+        });
+      }
+      return step();
+    });
+  }
+  // avih (timing/dims) + the video strh (codec fourcc / fps) from the hdrl blob.
+  function vidParseHdrl(buf){
+    var dv = new DataView(buf), n = buf.byteLength, res = {};
+    (function walk(p, end){
+      while(p + 8 <= end){
+        var id = vidFcc(dv, p), size = dv.getUint32(p+4, true), body = p + 8;
+        if(id === "LIST"){ walk(body + 4, body + size); }
+        else if(id === "avih"){
+          res.microSecPerFrame = dv.getUint32(body, true);
+          res.width = dv.getUint32(body + 32, true);
+          res.height = dv.getUint32(body + 36, true);
+        } else if(id === "strh"){
+          var t = vidFcc(dv, body), scale = dv.getUint32(body + 20, true), rate = dv.getUint32(body + 24, true);
+          if(t === "vids" && scale){ res.fps = rate / scale; res.handler = vidFcc(dv, body + 4); }
+        }
+        p = body + size + (size & 1);
+      }
+    })(0, n);
+    return res;
+  }
+  // Read idx1, auto-detect the offset base, keep video chunks (one per frame).
+  function vidReadIndex(file, info){
+    return vidReadBuf(file, info.idx1Pos, info.idx1Size).then(function(ib){
+      var dv = new DataView(ib), nEnt = Math.floor(info.idx1Size / 16);
+      if(!nEnt) throw new Error("idx1 empty");
+      var firstOff = dv.getUint32(8, true), bases = [info.moviFourccPos, 0];
+      function tryBase(bi){
+        if(bi >= bases.length) return Promise.reject(new Error("could not resolve idx1 base"));
+        return vidReadBuf(file, bases[bi] + firstOff, 4).then(function(pb){
+          var fc = vidFcc(new DataView(pb), 0);
+          if(/^\d\d[a-z][a-z]$/.test(fc)) return bases[bi];
+          return tryBase(bi + 1);
+        }, function(){ return tryBase(bi + 1); });
+      }
+      return tryBase(0).then(function(base){
+        var list = [];
+        for(var i = 0; i < nEnt; i++){
+          var o = i * 16, ckid = vidFcc(dv, o), flags = dv.getUint32(o+4, true),
+              coff = dv.getUint32(o+8, true), clen = dv.getUint32(o+12, true), suf = ckid.slice(2);
+          if(suf === "dc" || suf === "db") list.push({ pos: base + coff + 8, size: clen, key: (flags & 0x10) !== 0 });
+        }
+        return list;
+      });
+    });
+  }
+  // Scan Annex-B NALs for the SPS (codec string) — IIFE-local, mirrors the prototype.
+  function vidCodecFromFirstKey(bytes){
+    var i = 0, n = bytes.length, sps = null;
+    while(i + 4 < n){
+      if(bytes[i] === 0 && bytes[i+1] === 0 && bytes[i+2] === 1){
+        var s = i + 3, type = bytes[s] & 0x1f;
+        if(type === 7 && !sps) sps = [bytes[s+1], bytes[s+2], bytes[s+3]];
+        i = s + 1;
+      } else i++;
+    }
+    if(!sps) return "avc1.4D4033";
+    function h(x){ return ("0" + x.toString(16)).slice(-2).toUpperCase(); }
+    return "avc1." + h(sps[0]) + h(sps[1]) + h(sps[2]);
+  }
+  // Clip start time from its filename (fallback when there is no paired CSV).
+  function vidParseFilenameNs(name){
+    var m = /(\d{4})-(\d{2})-(\d{2})[tT](\d{2})[-:_](\d{2})[-:_](\d{2})/.exec(name || "");
+    if(!m) return null;
+    return BigInt(Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6])) * 1000000n;
+  }
+
+  // Demux a clip's headers + frame index + codec string (header reads + first keyframe only).
+  function vidDemuxHeader(clip){
+    if(clip.headerReady) return Promise.resolve();
+    var info;
+    return vidScanTopLevel(clip.avi).then(function(i){
+      info = i;
+      if(!info.moviFourccPos || !info.idx1Pos) throw new Error("no movi/idx1 index (OpenDML AVI not supported yet)");
+      return vidReadBuf(clip.avi, info.hdrlPos, info.hdrlSize);
+    }).then(function(hb){
+      var hd = vidParseHdrl(hb);
+      clip.dtUs = hd.microSecPerFrame || Math.round(1e6 / (hd.fps || 30));
+      clip.width = hd.width || 0; clip.height = hd.height || 0;
+      return vidReadIndex(clip.avi, info);
+    }).then(function(idx){
+      clip.idx = idx; clip.nFrames = idx.length;
+      var first = null;
+      for(var i = 0; i < idx.length; i++){ if(idx[i].key){ first = idx[i]; break; } }
+      if(!first) first = idx[0];
+      if(!first) throw new Error("no video frames");
+      return vidReadBuf(clip.avi, first.pos, Math.min(first.size, 4096));
+    }).then(function(fb){
+      clip.codec = vidCodecFromFirstKey(new Uint8Array(fb));
+      clip.headerReady = true;
+    });
+  }
+  // Per-frame offsets (ns from the experiment origin) from the paired CSV's first
+  // column — the same Harp clock the rest of GapScope shifts to the Unix epoch.
+  function vidLoadFrameOffsets(clip){
+    if(clip.framesReady) return Promise.resolve();
+    var origin = vidOriginNs();
+    if(!clip.csv){
+      return vidDemuxHeader(clip).then(function(){
+        var s = vidParseFilenameNs(clip.avi.name), base = (s != null) ? Number(s - origin) : 0, dt = clip.dtUs * 1000;
+        var arr = new Float64Array(clip.nFrames);
+        for(var i = 0; i < clip.nFrames; i++) arr[i] = base + i * dt;
+        clip.frameOff = arr; clip.framesReady = true;
+      });
+    }
+    return clip.csv.text().then(function(txt){
+      var lines = txt.split(/\r?\n/), arr = [];
+      for(var i = 0; i < lines.length; i++){
+        var ln = lines[i]; if(!ln) continue;
+        var c = ln.indexOf(","), f0 = (c === -1 ? ln : ln.slice(0, c)).trim();
+        if(!f0) continue;
+        var ts = parseTsNs(f0); if(ts === null) continue;     // header / non-numeric row
+        arr.push(Number(shiftTsNs(ts) - origin));
+      }
+      clip.frameOff = arr; clip.framesReady = true;
+    });
+  }
+  // Coarse clip bounds (offset space) for routing — CSV head/tail, no full read.
+  function vidClipBounds(clip){
+    var origin = vidOriginNs();
+    if(clip.csv){
+      return readCsvBounds(clip.csv).then(function(b){
+        if(b){ clip.startOff = Number(shiftTsNs(b.t0) - origin); clip.endOff = Number(shiftTsNs(b.t1) - origin); }
+        clip.boundsReady = true;
+      });
+    }
+    return vidDemuxHeader(clip).then(function(){
+      var s = vidParseFilenameNs(clip.avi.name);
+      clip.startOff = (s != null) ? Number(s - origin) : 0;
+      clip.endOff = clip.startOff + clip.nFrames * clip.dtUs * 1000;
+      clip.boundsReady = true;
+    });
+  }
+
+  function vidUsableN(clip){ return Math.min(clip.idx.length, clip.frameOff ? clip.frameOff.length : 0); }
+  function vidClipIndexForOff(off){
+    if(!vidClips || !vidClips.length) return -1;
+    var idx = 0;
+    for(var i = 0; i < vidClips.length; i++){ if(vidClips[i].startOff <= off) idx = i; else break; }
+    return idx;
+  }
+  function vidFrameForOff(clip, off){
+    var fo = clip.frameOff, n = vidUsableN(clip);
+    if(n <= 0) return 0;
+    if(off <= fo[0]) return 0;
+    if(off >= fo[n-1]) return n - 1;
+    var lo = 0, hi = n - 1, ans = 0;
+    while(lo <= hi){ var m = (lo + hi) >> 1; if(fo[m] <= off){ ans = m; lo = m + 1; } else hi = m - 1; }
+    return ans;
+  }
+  function vidKeyAtOrBefore(clip, i){
+    i = Math.max(0, Math.min(clip.idx.length - 1, i | 0));
+    while(i > 0 && !clip.idx[i].key) i--;
+    return i;
+  }
+
+  // ---- decode pipeline (presentation-order display; clip-local frame indices) ----
+  function vidDestroyDecoder(){
+    vidFeeding = false;
+    vidDisplay.forEach(function(d){ try{ d.frame.close(); }catch(e){} });
+    vidDisplay = [];
+    if(vidDecoder){ try{ vidDecoder.close(); }catch(e){} vidDecoder = null; }
+    vidSessionBase = -1;
+  }
+  function vidNewDecoder(clip){
+    vidDestroyDecoder();
+    vidOutCount = 0; vidFlushed = false; vidShownPidx = -1; vidForceReseek = false;
+    var dec = new VideoDecoder({
+      output: function(frame){ vidDisplay.push({ pidx: vidOutCount++, frame: frame }); },
+      // an error wedges this decoder — drop it so the next tick rebuilds the session
+      error: function(){ if(vidDecoder === dec) vidForceReseek = true; }
+    });
+    vidDecoder = dec;
+    try{ dec.configure({ codec: clip.codec, optimizeForLatency: true, hardwareAcceleration: "no-preference" }); }
+    catch(e){ vidShowNote("Cannot decode this video (" + clip.codec + "): " + e.message); if(vidDecoder === dec){ try{ dec.close(); }catch(_){} vidDecoder = null; } }
+  }
+  function vidPump(clip){
+    if(vidPumping || !vidDecoder || !vidFeeding) return;
+    vidPumping = true;
+    var myDec = vidDecoder, ep = vidEpoch, N = vidUsableN(clip);
+    function more(){
+      return vidFeeding && !vidFlushed && vidDecoder === myDec && ep === vidEpoch &&
+             vidFeedIdx <= vidFeedLimit && vidFeedIdx < N &&
+             myDec.decodeQueueSize < 20 && vidDisplay.length < 32;
+    }
+    function loop(){
+      if(!more()){
+        // flush to drain frames the decoder holds for reordering when the feed range
+        // is exhausted: at the end of the clip, or after a PAUSED seek (so the target
+        // frame actually emits instead of being held until the next feed). A flush
+        // requires a keyframe before the next decode — fine, vidPlay/vidSeekOff reseek.
+        var rangeDone = vidFeedIdx > vidFeedLimit || vidFeedIdx >= N;
+        if(vidDecoder === myDec && ep === vidEpoch && !vidFlushed && rangeDone && (vidFeedIdx >= N || vidSeekHold)){
+          vidFlushed = true; myDec.flush().catch(function(){});
+        }
+        vidPumping = false; return;
+      }
+      var f = clip.idx[vidFeedIdx];
+      vidReadBuf(clip.avi, f.pos, f.size).then(function(ab){
+        if(vidDecoder !== myDec || ep !== vidEpoch){ vidPumping = false; return; }
+        try{
+          myDec.decode(new EncodedVideoChunk({ type: f.key ? "key" : "delta",
+            timestamp: vidFeedIdx * (clip.dtUs || 1), duration: clip.dtUs || 1, data: new Uint8Array(ab) }));
+        }catch(e){ vidPumping = false; return; }
+        vidFeedIdx++;
+        loop();
+      }, function(){ vidPumping = false; });
+    }
+    loop();
+  }
+  function vidSeekDecode(clip, tf){
+    vidNewDecoder(clip);
+    if(!vidDecoder) return;
+    vidSessionBase = vidKeyAtOrBefore(clip, tf);
+    vidFeedIdx = vidSessionBase; vidFeeding = true; vidFlushed = false;
+  }
+  function vidDriveDecode(clip, tf){
+    // reseek from the nearest keyframe only when we can't continue the current
+    // session: it's gone/errored, the target is behind the session start, or a seek
+    // explicitly requested a new start (vidNeedSeekDecode, set once per seek).
+    // Otherwise feed forward within the session — across keyframes during playback,
+    // and up to a seek target inside its GOP. We deliberately do NOT reseek just
+    // because the decoder was flushed: after a paused seek's flush we must let the
+    // held frames drain and draw the target (reseeking here re-ran the catch-up
+    // forever). A flushed decoder simply won't be fed again (see more()); the next
+    // real seek / resume reseeks via vidNeedSeekDecode / vidPlay.
+    if(!vidDecoder || vidForceReseek || vidSessionBase < 0 ||
+       vidNeedSeekDecode || tf < vidSessionBase){
+      vidSeekDecode(clip, tf);
+      vidNeedSeekDecode = false;
+    }
+    if(!vidDecoder) return;
+    var N = vidUsableN(clip);
+    vidFeedLimit = vidPlaying ? (N - 1) : Math.min(N - 1, tf + VID_MARGIN);
+    var targetPidx = tf - vidSessionBase, toDraw = null;
+    while(vidDisplay.length && vidDisplay[0].pidx <= targetPidx){
+      if(toDraw) try{ toDraw.frame.close(); }catch(e){}
+      toDraw = vidDisplay.shift();
+    }
+    if(toDraw){ vidDrawFrame(toDraw.frame); vidShownPidx = toDraw.pidx; try{ toDraw.frame.close(); }catch(e){} }
+    vidPump(clip);
+  }
+  // which DOM elements this video instance targets, by mode
+  function vidCanvas(){ return $(vidMode === "chart" ? "chart-vid" : "vid-canvas"); }
+  function vidDrawFrame(frame){
+    var cv = vidCanvas(); if(!cv) return;
+    if(cv.width !== frame.displayWidth){ cv.width = frame.displayWidth; cv.height = frame.displayHeight; }
+    cv.getContext("2d").drawImage(frame, 0, 0);
+  }
+  function vidActivateClip(ci){ vidActiveIdx = ci; vidDestroyDecoder(); vidUpdateClip(); }
+
+  // ---- playhead overlay on the trace (offset → x, like drawTrace) ----
+  function vidPhCtx(){
+    var cv = $("trace-ph"), tr = $("trace"); if(!cv || !tr) return null;
+    var dpr = window.devicePixelRatio || 1, w = tr.clientWidth, h = tr.clientHeight;
+    if(!w || !h) return null;
+    if(cv._w !== w || cv._h !== h || cv._dpr !== dpr){
+      cv.style.left = tr.offsetLeft + "px"; cv.style.top = tr.offsetTop + "px";
+      cv.style.width = w + "px"; cv.style.height = h + "px";
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      cv._w = w; cv._h = h; cv._dpr = dpr;
+    }
+    var ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: w, h: h };
+  }
+  // chart-mode playhead canvas (overlays #chart, spans only the plot area)
+  function vidChartPhCtx(){
+    var cv = $("chart-ph"), tr = $("chart"); if(!cv || !tr) return null;
+    var dpr = window.devicePixelRatio || 1, w = tr.clientWidth, h = tr.clientHeight;
+    if(!w || !h) return null;
+    if(cv._w !== w || cv._h !== h || cv._dpr !== dpr){
+      cv.style.left = tr.offsetLeft + "px"; cv.style.top = tr.offsetTop + "px";
+      cv.style.width = w + "px"; cv.style.height = h + "px";
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      cv._w = w; cv._h = h; cv._dpr = dpr;
+    }
+    var ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: w, h: h };
+  }
+  function vidDrawPlayhead(){
+    if(vidMode === "chart"){
+      var gc = vidChartPhCtx(); if(!gc) return;
+      var cx = gc.ctx; cx.clearRect(0, 0, gc.w, gc.h);
+      if(!chartData || !chartGeom || cvEnd <= cvStart) return;
+      var gm = chartGeom, x = gm.plotL + ((vidPosOff - cvStart) / (cvEnd - cvStart)) * gm.plotW;
+      if(x < gm.plotL - 2 || x > gm.plotL + gm.plotW + 2) return;
+      cx.strokeStyle = "rgba(74,168,255,.9)"; cx.lineWidth = 1.5;
+      cx.beginPath(); cx.moveTo(x, gm.padTop); cx.lineTo(x, gm.padTop + gm.plotH); cx.stroke();
+      cx.fillStyle = "rgba(74,168,255,.95)";
+      cx.beginPath(); cx.moveTo(x - 4, gm.padTop); cx.lineTo(x + 4, gm.padTop); cx.lineTo(x, gm.padTop + 7); cx.closePath(); cx.fill();
+      return;
+    }
+    var g = vidPhCtx(); if(!g) return;
+    var ctx = g.ctx; ctx.clearRect(0, 0, g.w, g.h);
+    if(!stats || viewEnd <= viewStart) return;
+    var x2 = ((vidPosOff - viewStart) / (viewEnd - viewStart)) * g.w;
+    if(x2 < -2 || x2 > g.w + 2) return;
+    ctx.strokeStyle = "rgba(74,168,255,.9)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x2, 0); ctx.lineTo(x2, g.h); ctx.stroke();
+    ctx.fillStyle = "rgba(74,168,255,.95)";
+    ctx.beginPath(); ctx.moveTo(x2 - 4, 0); ctx.lineTo(x2 + 4, 0); ctx.lineTo(x2, 7); ctx.closePath(); ctx.fill();
+  }
+
+  // ---- per-frame driver (also the playhead loop) ----
+  function vidTick(){
+    if(!vidActive){ vidPhReq = 0; return; }
+    vidPhReq = requestAnimationFrame(vidTick);
+    if(vidPlaying && !vidSeekHold){    // a seek freezes the clock until its frame is shown
+      var last = vidClips[vidClips.length - 1];
+      vidPosOff = vidPlayStartOff + (performance.now() - vidPlayPerf) * 1e6 * vidSpeed;
+      if(vidPosOff >= last.endOff){ vidPosOff = last.endOff; vidPlaying = false; vidUpdateBtn(); }
+      if(vidPosOff < vidClips[0].startOff) vidPosOff = vidClips[0].startOff;
+    }
+    vidDrawPlayhead();
+    vidUpdateTime();
+    var ci = vidClipIndexForOff(vidPosOff);
+    if(ci < 0) return;
+    if(ci !== vidActiveIdx){
+      if(!vidLoadingClip){
+        vidLoadingClip = true;
+        var ep = vidEpoch, clip = vidClips[ci];
+        Promise.all([vidDemuxHeader(clip), vidLoadFrameOffsets(clip)]).then(function(){
+          vidLoadingClip = false; if(ep === vidEpoch) vidActivateClip(ci);
+        }, function(){ vidLoadingClip = false; });
+      }
+      return;
+    }
+    var c = vidClips[ci];
+    if(!c.headerReady || !c.framesReady) return;
+    var tf = vidFrameForOff(c, vidPosOff);
+    // when paused and the correct frame is already on screen, stay idle — don't keep
+    // rebuilding the (flushed) decoder every frame
+    var idle = !vidPlaying && !vidSeekHold && !vidForceReseek && vidDecoder &&
+               vidSessionBase >= 0 && vidShownPidx >= (tf - vidSessionBase);
+    if(idle) return;
+    vidDriveDecode(c, tf);
+    // release the seek hold once the target frame has actually been displayed
+    if(vidSeekHold && vidShownPidx >= tf - vidSessionBase){
+      vidSeekHold = false;
+      if(vidPlaying){ vidPlayPerf = performance.now(); vidPlayStartOff = vidPosOff; }
+    }
+  }
+
+  // ---- UI + public hooks (element ids depend on the mode) ----
+  function vidIdPlay(){ return vidMode === "chart" ? "chart-vid-play" : "vid-play"; }
+  function vidIdTime(){ return vidMode === "chart" ? "chart-vid-time" : "vid-time"; }
+  function vidIdClip(){ return vidMode === "chart" ? "chart-vid-clip" : "vid-clip"; }
+  function vidIdNote(){ return vidMode === "chart" ? "chart-vid-note" : "vid-note"; }
+  function vidHideAllPanels(){
+    ["video-block", "chart-vidwrap"].forEach(function(id){ var e = $(id); if(e) e.style.display = "none"; });
+    var c = $("chart-vidctl"); if(c) c.style.display = "none";
+  }
+  function vidShowPanel(show){
+    if(vidMode === "chart"){
+      var w = $("chart-vidwrap"), c = $("chart-vidctl");
+      if(w) w.style.display = show ? "block" : "none";
+      if(c) c.style.display = show ? "inline-flex" : "none";
+    } else {
+      var b = $("video-block"); if(b) b.style.display = show ? "block" : "none";
+    }
+  }
+  function vidShowNote(msg){
+    var n = $(vidIdNote()), c = vidCanvas();
+    if(n){ n.textContent = msg || ""; n.style.display = msg ? "block" : "none"; }
+    if(c) c.style.display = msg ? "none" : "inline-block";
+  }
+  function vidUpdateBtn(){ var b = $(vidIdPlay()); if(b) b.textContent = vidPlaying ? "⏸ Pause" : "▶ Play"; }
+  function vidUpdateTime(){
+    var el = $(vidIdTime()); if(!el) return;
+    var t = expAbsolute() ? fmtClockFull(chartAbsNs(vidPosOff)) : (vidPosOff / 1e9).toFixed(3) + " s";
+    el.textContent = (vidSeekHold ? "⟳ " : "") + t;
+  }
+  function vidUpdateClip(){
+    var el = $(vidIdClip()); if(!el || !vidClips) return;
+    var i = vidActiveIdx >= 0 ? vidActiveIdx : vidClipIndexForOff(vidPosOff), c = vidClips[i];
+    el.textContent = "clip " + (i + 1) + "/" + vidClips.length + (c ? " · " + c.name : "");
+  }
+  // Jump to a time offset. The playhead holds at the target until that frame is
+  // decoded and shown (vidTick releases the hold), so the decoder catches up once
+  // rather than chasing a moving playhead.
+  function vidSeekOff(off, keepPlaying){
+    if(!vidClips || !vidClips.length) return;
+    var lo = vidClips[0].startOff, hi = vidClips[vidClips.length - 1].endOff;
+    vidPosOff = Math.max(lo, Math.min(hi, off));
+    vidSeekHold = true; vidShownPidx = -1; vidNeedSeekDecode = true;   // one reseek per seek
+    vidPlaying = !!keepPlaying;
+    vidUpdateBtn();
+    if(!vidPhReq) vidTick();
+  }
+  // Resume from a paused/held position without reseeking — the decode session
+  // continues forward (reseek only if it was flushed or never started).
+  function vidPlay(){
+    if(!vidActive) return;
+    if(!vidDecoder || vidFlushed){ vidSeekOff(vidPosOff, true); return; }
+    vidPlaying = true; vidSeekHold = false;
+    vidPlayPerf = performance.now(); vidPlayStartOff = vidPosOff;
+    vidUpdateBtn();
+    if(!vidPhReq) vidTick();
+  }
+  function vidPause(){
+    if(!vidPlaying && !vidSeekHold) return;
+    if(vidPlaying && !vidSeekHold) vidPosOff = vidPlayStartOff + (performance.now() - vidPlayPerf) * 1e6 * vidSpeed;
+    vidPlaying = false; vidSeekHold = false; vidUpdateBtn();
+  }
+  function vidToggle(){ if(vidPlaying) vidPause(); else vidPlay(); }
+
+  function vidDetach(){
+    vidEpoch++;
+    vidActive = false; vidPlaying = false; vidSeekHold = false; vidLoadingClip = false;
+    if(vidPhReq){ cancelAnimationFrame(vidPhReq); vidPhReq = 0; }
+    vidDestroyDecoder();
+    vidDev = null; vidClips = null; vidActiveIdx = -1; vidPosOff = 0;
+    vidHideAllPanels();
+    var g = vidPhCtx(); if(g) g.ctx.clearRect(0, 0, g.w, g.h);
+    var gc = vidChartPhCtx(); if(gc) gc.ctx.clearRect(0, 0, gc.w, gc.h);
+  }
+  function vidAttach(dev, mode){
+    mode = mode || "trace";
+    if(!dev || !dev.videos || !dev.videos.length){ vidDetach(); return; }
+    if(vidDev === dev && vidClips && vidMode === mode){ vidShowPanel(true); if(!vidPhReq && vidActive) vidTick(); return; }
+    vidDetach();
+    vidMode = mode;
+    vidDev = dev;
+    vidShowPanel(true); vidUpdateBtn();
+    if(!vidHasCodec){ vidShowNote("Video playback needs WebCodecs (use Chrome or Edge)."); return; }
+    vidShowNote("");
+    vidClips = dev.videos.map(function(av){
+      var base = vidStripExt(av.name);
+      var csv = (dev.csvs || []).filter(function(c){ return vidStripExt(c.name) === base; })[0] || null;
+      return { avi: av, csv: csv, name: base, headerReady: false, framesReady: false, boundsReady: false,
+               idx: [], frameOff: null, nFrames: 0, dtUs: 0, width: 0, height: 0, codec: "avc1.4D4033", startOff: 0, endOff: 0 };
+    });
+    if($(vidIdClip())) $(vidIdClip()).textContent = "reading clips…";
+    if($(vidIdPlay())) $(vidIdPlay()).disabled = true;
+    var ep = vidEpoch;
+    Promise.all(vidClips.map(vidClipBounds)).then(function(){
+      if(ep !== vidEpoch) return;
+      vidClips.sort(function(a, b){ return a.startOff - b.startOff; });
+      vidActive = true;
+      if($(vidIdPlay())) $(vidIdPlay()).disabled = false;
+      vidActiveIdx = -1; vidLoadingClip = false;
+      vidSeekOff(vidClips[0].startOff, false);
+      vidUpdateClip();
+    }, function(){ if(ep === vidEpoch) vidShowNote("Could not read the video clips."); });
+  }
+  // Jump the video to a time offset clicked on the trace (bidirectional sync).
+  function vidSeekFromOff(off){ if(vidActive) vidSeekOff(off, vidPlaying); }
 
   // ---------- combined value chart ----------
   // A selection of register value-lines across devices, plotted together against
@@ -3561,6 +4137,22 @@ time
       setLine(dev, i, 0, names[0], !isChartSelected(dev.name, i, 0));
     }
     fillDevCard(dev);
+    updateChartBar();
+  }
+  // A camera video is a single selectable item per device (kind:"video"); the
+  // visualizer plays at most one, so selecting another replaces the previous.
+  function videoKey(devName){ return devName + "|video"; }
+  function isVideoSelected(devName){ return !!chartSel[videoKey(devName)]; }
+  function selectedVideoDev(){
+    var k = Object.keys(chartSel).filter(function(key){ return chartSel[key].kind === "video"; })[0];
+    return k ? chartSel[k].dev : null;
+  }
+  function toggleVideoSel(dev){
+    var k = videoKey(dev.name), on = !chartSel[k];
+    // single-video visualizer: drop any other video selection first
+    Object.keys(chartSel).forEach(function(key){ if(chartSel[key].kind === "video") delete chartSel[key]; });
+    if(on) chartSel[k] = { kind: "video", dev: dev, devName: dev.name, name: dev.name + " video" };
+    refreshCards();
     updateChartBar();
   }
   function chartSelCount(){ return Object.keys(chartSel).length; }
@@ -3710,13 +4302,17 @@ time
     pauseScan();
     var origin = (experiment.timeline ? experiment.timeline.startNs : 0n);
     var full = (experiment.timeline ? experiment.timeline.durationNs : 0);
-    // group selected lines by stream so each stream is parsed only once
+    // group selected lines by stream so each stream is parsed only once (video
+    // selections are handled separately — they aren't value streams)
     var byStream = {};
     Object.keys(chartSel).forEach(function(key){
-      var it = chartSel[key], sk = it.devName + "|" + it.sIdx;
+      var it = chartSel[key];
+      if(it.kind === "video") return;
+      var sk = it.devName + "|" + it.sIdx;
       (byStream[sk] || (byStream[sk] = { dev: it.dev, s: it.dev.streams[it.sIdx], chs: [] })).chs.push(it);
     });
     var groups = Object.keys(byStream).map(function(k){ return byStream[k]; });
+    var videoDev = selectedVideoDev();
     // show the chart view in a loading state
     $("explist").style.display = "none";
     drop.style.display = "none"; loaded.style.display = "none"; results.style.display = "none";
@@ -3740,7 +4336,7 @@ time
         });
       });
       progress.style.display = "none";
-      if(!lines.length){ returnHome(); showError("None of the selected registers held readable values."); return; }
+      if(!lines.length && !videoDev){ returnHome(); showError("None of the selected registers held readable values."); return; }
       // window the chart over the experiment span; if there's no timeline, frame
       // the loaded data's own min→max offset instead
       var lo = 0, hi = full;
@@ -3751,11 +4347,14 @@ time
       }
       chartData = { lines: lines, full: hi - lo, decimated: decimated };
       cvBase = lo; cvFull = hi - lo; cvStart = lo; cvEnd = hi;
-      $("chartmeta").textContent = lines.length + " line" + (lines.length > 1 ? "s" : "")
+      $("chartmeta").textContent = (lines.length + " line" + (lines.length === 1 ? "" : "s"))
+        + (videoDev ? " · " + esc(videoDev.name) + " video" : "")
         + (decimated ? " · decimated for display" : "");
       buildChartLegend();
       $("chartview").style.display = "block";
       drawChart();
+      // attach the selected camera video in chart mode (playhead on #chart)
+      if(videoDev) vidAttach(videoDev, "chart"); else vidDetach();
       updateHeaderNav();
     }).catch(function(){
       progress.style.display = "none"; returnHome();
@@ -4326,6 +4925,10 @@ time
           var ta = xToTime(Math.min(xa, xb)), tb = xToTime(Math.max(xa, xb));
           var ns = tb - ta; if(ns < chartMinWindow()) ns = chartMinWindow();
           var mid = (ta + tb)/2; cvStart = mid - ns/2; cvEnd = mid + ns/2; clampChart();
+        } else if(vidActive && vidMode === "chart" && chartData){
+          // a click (no drag) jumps the camera video to that time
+          var ff = Math.max(0, Math.min(1, (xa - g.plotL)/(g.plotW || 1)));
+          vidSeekFromOff(cvStart + ff*(cvEnd - cvStart));
         }
         scheduleChart();
       }
@@ -4428,6 +5031,17 @@ time
       if(stats){ drawTrace(); drawHeat(); }
     }, 120);
   });
+
+  // camera video controls (trace view + visualizer share the single video instance)
+  function vidSpeedHandler(){
+    var was = vidPlaying; if(was) vidPause();
+    vidSpeed = parseFloat(this.value) || 1;
+    if(was) vidPlay();
+  }
+  if($("vid-play")) $("vid-play").addEventListener("click", vidToggle);
+  if($("vid-speed")) $("vid-speed").addEventListener("change", vidSpeedHandler);
+  if($("chart-vid-play")) $("chart-vid-play").addEventListener("click", vidToggle);
+  if($("chart-vid-speed")) $("chart-vid-speed").addEventListener("change", vidSpeedHandler);
 
   // restore persisted settings and reflect them into the controls
   loadSettings();
