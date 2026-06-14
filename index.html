@@ -41,10 +41,10 @@
     line-height:1.5;
     -webkit-font-smoothing:antialiased;
   }
-  .wrap{margin:0 auto;padding:28px 12px 80px}
+  .wrap{margin:0 auto;padding:12px 12px 80px}
 
   /* nameplate */
-  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:12px}
   .brand{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   .brand .mark{
     width:38px;height:38px;border:1px solid var(--line-bright);border-radius:7px;
@@ -57,12 +57,26 @@
   }
   .brand .sub{font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--text-faint);text-transform:uppercase;margin-top:2px}
 
-  /* header nav buttons (load / back), right of the app name */
+  /* header nav buttons (back / load), right of the app name — square icon buttons */
   .hdr-nav{display:flex;align-items:center;gap:8px;margin-left:8px}
-  .hdrbtn{background:var(--panel-2);border:1px solid var(--line-bright);color:var(--accent);
-    font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;
-    transition:border-color .15s,color .15s,background .15s}
+  .hdrbtn{position:relative;width:38px;height:38px;display:grid;place-items:center;padding:0;
+    background:var(--panel-2);border:1px solid var(--line-bright);color:var(--accent);
+    border-radius:7px;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
   .hdrbtn:hover{border-color:var(--accent);background:var(--panel)}
+  .hdrbtn:disabled{opacity:.4;cursor:default}
+  .hdrbtn:disabled:hover{border-color:var(--line-bright);background:var(--panel-2)}
+  .hdrbtn svg{display:block;width:20px;height:20px}
+  /* count badge on the Visualize button while selecting */
+  .hdr-badge{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;
+    border-radius:9px;background:var(--accent);color:#06101c;font-family:var(--mono);font-size:10px;
+    font-weight:700;line-height:16px;text-align:center;box-shadow:0 0 0 2px var(--bg)}
+  /* styled mouse-over tooltip explaining each button */
+  .hdrbtn::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);
+    background:var(--panel);border:1px solid var(--line-bright);color:var(--text);
+    font-family:var(--mono);font-size:11px;letter-spacing:.04em;white-space:nowrap;
+    padding:5px 9px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:20;
+    box-shadow:0 6px 18px rgba(0,0,0,.45)}
+  .hdrbtn:hover::after{opacity:1}
 
   /* controls — all on one line: label before each value, unit/extras after */
   .controls{display:flex;flex-direction:row;align-items:center;gap:18px;flex-wrap:wrap}
@@ -195,16 +209,10 @@
     font-size:15px;line-height:1;vertical-align:middle;user-select:none}
   .devcard tbody tr:hover .caret{color:var(--accent)}
   .devcard .vcount{color:var(--text-faint);font-size:10px;background:var(--bg-grid);border-radius:8px;padding:0 6px;margin-left:4px}
-  .devcard tbody tr.csel td{background:rgba(74,168,255,.16)}
-  .devcard tbody tr.csel td:first-child{color:var(--accent);box-shadow:inset 2px 0 0 var(--accent)}
+  .devcard tbody tr.csel td{background:rgba(74,168,255,.32);color:var(--text)}
+  .devcard tbody tr.csel td:first-child{color:var(--accent);font-weight:600;box-shadow:inset 3px 0 0 var(--accent)}
   .explist.editing .devcard{cursor:default;border-style:dashed}
   .explist.editing .devcard:hover{border-color:var(--accent)}
-  .explist .exphead .expctl{display:flex;align-items:center;gap:14px}
-  .explist .exphead .chartbar{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px;color:var(--text-dim)}
-  .explist .exphead button.reload{background:none;border:1px solid var(--line);border-radius:6px;padding:4px 10px;
-    color:var(--accent);cursor:pointer;font-family:var(--mono);font-size:12px}
-  .explist .exphead button.reload:hover{border-color:var(--accent)}
-  .explist .exphead button.reload:disabled{color:var(--text-faint);cursor:default;border-color:var(--bg-grid)}
   /* combined chart view */
   .chartview{display:none;margin-top:18px}
   .chartview .exphead{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
@@ -356,6 +364,36 @@
   .vidcap .cl{color:var(--text-dim)}
   .vidpanel .vidwrap{border:none;border-radius:0;min-height:80px}
   .vidpanel canvas{display:block;width:100%;height:auto;max-height:42vh;object-fit:contain;background:#000}
+  /* click a camera to enlarge it and hide the rest (multi-camera only) */
+  .vidgrid.multi .vidpanel{cursor:zoom-in}
+  .vidgrid.focused{grid-template-columns:1fr}
+  .vidgrid.focused .vidpanel{display:none}
+  .vidgrid.focused .vidpanel.focus{display:block;cursor:zoom-out}
+  /* a single (solo) video — single-camera Visualizer or a focused camera — is
+     freely resizable, keeping its aspect ratio (width drives it, height auto) */
+  .vidgrid.solo{grid-template-columns:1fr;justify-items:center}
+  .vidpanel.solo{width:var(--solo-w,52%);max-width:100%;position:relative}
+  .vidpanel.solo canvas{max-height:none}
+  .vid-rsz{position:absolute;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;z-index:6;
+    background:linear-gradient(135deg,transparent 45%,var(--phosphor) 45%,var(--phosphor) 70%,transparent 70%);
+    opacity:.55}
+  .vid-rsz:hover{opacity:.95}
+  /* ROI loupe: drag a square on the solo video, see it zoomed in a panel at the right.
+     NB: more specific than `.vidpanel canvas` so it stays transparent and full-height. */
+  .vidpanel .vid-ovl{position:absolute;inset:0;width:100%;height:100%;max-height:none;
+    background:transparent;object-fit:fill;cursor:crosshair;z-index:5;touch-action:none}
+  .vidgrid.solo.loupe{display:flex;justify-content:center;align-items:flex-start;gap:10px;flex-wrap:nowrap}
+  .vidgrid.solo.loupe .vidpanel.solo{flex:none}   /* width is sized by JS so the loupe fits beside it */
+  .vidloupe{flex:none;border:1px solid var(--line);border-top:2px solid var(--phosphor);border-radius:8px;
+    overflow:hidden;background:#000}
+  .vidloupe .vidcap{display:flex;align-items:center;justify-content:space-between;color:var(--phosphor)}
+  .vidloupe canvas{display:block;background:#000}
+  .vidloupe .lpclose{cursor:pointer;color:var(--text-dim);font-size:13px;padding:0 2px;line-height:1}
+  .vidloupe .lpclose:hover{color:var(--drop)}
+  /* vertical drag handle under the graph */
+  .vresize{height:12px;margin-top:2px;cursor:ns-resize;display:flex;align-items:center;justify-content:center}
+  .vresize::before{content:"";width:46px;height:4px;border-radius:2px;background:var(--line-bright);transition:background .12s}
+  .vresize:hover::before{background:var(--phosphor)}
 </style>
 </head>
 <body>
@@ -375,8 +413,39 @@
         <div class="sub">capture integrity inspector</div>
       </div>
       <div class="hdr-nav">
-        <button type="button" class="hdrbtn" id="hdr-load" style="display:none" title="Load a different capture">⤓ Load another capture</button>
-        <button type="button" class="hdrbtn" id="hdr-back" style="display:none" title="Back to the experiment device list">← devices</button>
+        <button type="button" class="hdrbtn" id="hdr-back" style="display:none" data-tip="Back to the device list" aria-label="Back to the device list">
+          <svg viewBox="0 0 22 22" fill="none">
+            <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/>
+            <rect x="12" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/>
+            <rect x="3" y="12" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/>
+            <rect x="12" y="12" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/>
+          </svg>
+        </button>
+        <button type="button" class="hdrbtn" id="hdr-load" style="display:none" data-tip="Load another capture" aria-label="Load another capture">
+          <svg viewBox="0 0 22 22" fill="none">
+            <path d="M11 3 V12 M7.5 8.5 L11 12 L14.5 8.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 14 V17 A1 1 0 0 0 5 18 H17 A1 1 0 0 0 18 17 V14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button type="button" class="hdrbtn" id="chartnew" style="display:none" data-tip="New Visualizer — then click registers, columns or videos across devices to add them" aria-label="New Visualizer">
+          <svg viewBox="0 0 22 22" fill="none">
+            <path d="M3 16 L7 11 L10 13 L13 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="16.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M16.5 4.8 V8.2 M14.8 6.5 H18.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button type="button" class="hdrbtn" id="chartviz" style="display:none" disabled data-tip="Visualize the selected streams" aria-label="Visualize the selected streams">
+          <svg viewBox="0 0 22 22" fill="none">
+            <path d="M4 4 V18 H18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 14 L10 10 L13 12 L17 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="hdr-badge" id="chartcount" style="display:none">0</span>
+        </button>
+        <button type="button" class="hdrbtn" id="chartcancel" style="display:none" data-tip="Cancel selection" aria-label="Cancel selection">
+          <svg viewBox="0 0 22 22" fill="none">
+            <path d="M6 6 L16 16 M16 6 L6 16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -431,14 +500,6 @@ time
   <div class="explist" id="explist">
     <div class="exphead">
       <div class="file"><span class="dot"></span><span class="name" id="expname"></span><span class="expmeta" id="expmeta"></span></div>
-      <div class="expctl">
-        <span class="chartbar" id="chartbar" style="display:none">
-          <span id="chartcount">0 selected</span>
-          <button type="button" class="reload" id="chartviz" disabled title="Build the visualizer from the selected streams">Visualize</button>
-          <button type="button" class="reload" id="chartcancel">Cancel</button>
-        </span>
-        <button type="button" class="reload" id="chartnew" title="Build a visualizer — then click registers, columns, or videos across devices to add them">＋ New Visualizer</button>
-      </div>
     </div>
     <div class="scanline" id="scanline"></div>
     <div class="devgrid" id="devgrid"></div>
@@ -458,6 +519,7 @@ time
             <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
             <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
           </select>
+          <button class="vidbtn" id="chart-vid-all" style="display:none" title="Show all cameras (Esc)">⤢ All cameras</button>
           <span class="vidclip" id="chart-vid-clip"></span>
           <span class="vidtime" id="chart-vid-time"></span>
         </span>
@@ -473,6 +535,7 @@ time
       <div class="readout" id="chart-ro"></div>
     </div>
     <div class="axis"><span id="chart-tstart">0 s</span><span id="chart-tmid"></span><span id="chart-tend"></span></div>
+    <div class="vresize" id="chart-vresize" title="Drag to resize the graph height"></div>
   </div>
 
   <div class="loaded" id="loaded">
@@ -650,6 +713,7 @@ time
   var cvBase = 0, cvStart = 0, cvEnd = 0, cvFull = 0;   // chart view window: domain [cvBase, cvBase+cvFull], visible [cvStart,cvEnd]
   var cvSelRect = null;          // {xa,xb} drag-select rectangle (chart pixels) while selecting
   var chartGeom = null;          // plot geometry from the last drawChart: {plotL,plotW,padTop,plotH}
+  var chartH = 360;              // chart canvas height (px); user-resizable via the drag handle
   var CHART_MAX_PTS = 300000;    // per-stream point cap; values are decimated on load above this
   var CHUNK_BYTES = 8 * 1024 * 1024;  // fixed 8 MB byte-slice size for streaming reads
   // Harp time is seconds since 1904-01-01; Unix epoch is 1970-01-01, which is
@@ -2498,6 +2562,12 @@ time
     var frac = Number(epochNs % 1000000000n);
     return (stepSec >= 1e-3) ? hms+"."+pad(Math.floor(frac/1e6),3) : hms+"."+pad(Math.floor(frac/1e3),6);
   }
+  // Compact UTC stamp (date + HH:MM:SS, no sub-second) for headers.
+  function fmtClockSec(epochNs){
+    var d = clockDate(epochNs);
+    return d.getUTCFullYear()+"-"+pad(d.getUTCMonth()+1,2)+"-"+pad(d.getUTCDate(),2)+" "
+      + pad(d.getUTCHours(),2)+":"+pad(d.getUTCMinutes(),2)+":"+pad(d.getUTCSeconds(),2);
+  }
   // Full UTC stamp for the hover readout / summary row.
   function fmtClockFull(epochNs){
     var d = clockDate(epochNs), frac = Number(epochNs % 1000000000n);
@@ -3026,6 +3096,12 @@ time
     var loadActive = !!experiment || isShown("loaded") || isShown("results") || isShown("explist") || chartOpen;
     $("hdr-load").style.display = loadActive ? "" : "none";
     $("hdr-back").style.display = (experiment && (currentDevice || chartOpen)) ? "" : "none";
+    // Visualizer controls belong to the experiment device-list page: "New Visualizer"
+    // when idle, the Visualize/Cancel pair while selecting streams.
+    var onDeviceList = !!experiment && isShown("explist") && !currentDevice && !chartOpen;
+    $("chartnew").style.display = (onDeviceList && !chartEditMode) ? "" : "none";
+    $("chartviz").style.display = (onDeviceList && chartEditMode) ? "" : "none";
+    $("chartcancel").style.display = (onDeviceList && chartEditMode) ? "" : "none";
   }
   // From a device analysis view or the combined chart, return to the device list.
   function goBackToDevices(){
@@ -3440,8 +3516,6 @@ time
     experiment = null; currentDevice = null;
     chartEditMode = false; chartSel = {}; chartData = null;
     $("chartview").style.display = "none";
-    $("chartbar").style.display = "none";
-    $("chartnew").style.display = "";
     $("explist").classList.remove("editing");
     $("explist").style.display = "none";
     updateHeaderNav();
@@ -3453,8 +3527,15 @@ time
   function renderExperiment(){
     $("expname").textContent = experiment.name;
     var nDev = experiment.devices.length, nCfg = experiment.configFiles.length;
-    $("expmeta").textContent = nDev + " device" + (nDev > 1 ? "s" : "")
+    var meta = nDev + " device" + (nDev > 1 ? "s" : "")
       + (nCfg ? " · " + nCfg + " config file" + (nCfg > 1 ? "s" : "") : "");
+    var tl = experiment.timeline;
+    if(tl){
+      meta += " · " + fmtDuration(tl.durationNs);
+      // human-readable window only when there's an absolute (wall-clock) reference
+      if(expAbsolute()) meta += " · " + fmtClockSec(tl.startNs) + " → " + fmtClockSec(tl.endNs) + " UTC";
+    }
+    $("expmeta").textContent = meta;
     var grid = $("devgrid");
     grid.innerHTML = "";
     experiment.devices.forEach(function(dev){
@@ -3632,6 +3713,7 @@ time
   // shows exactly one; the Visualizer shows 1..N side by side. A single shared clock
   // (vidPosOff/vidPlaying/vidSpeed) and one playhead drive every player together.
   var vidPlayers = [], vidActive = false, vidEpoch = 0;
+  var vidFocusIdx = -1;      // chart mode: index of the enlarged camera, or -1 for "show all"
   var vidPlaying = false, vidPosOff = 0, vidPlayPerf = 0, vidPlayStartOff = 0, vidSpeed = 1;
   // a seek holds the playhead at its target until EVERY player's frame is shown
   // (then resumes), so no decoder chases a moving target
@@ -3942,6 +4024,7 @@ time
       cv._blank = false;
       if(cv.width !== frame.displayWidth){ cv.width = frame.displayWidth; cv.height = frame.displayHeight; }
       cv.getContext("2d").drawImage(frame, 0, 0);
+      if(vidRoi && vidRoiPlayer === p) vidUpdateLoupe();   // refresh the zoom from the new frame
     };
     // no footage at the current time — dim the panel and say so (rather than holding
     // a stale frame from before/after the recording)
@@ -3954,6 +4037,7 @@ time
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("— no footage at this time —", cv.width/2, cv.height/2);
       ctx.restore();
+      if(vidRoi && vidRoiPlayer === p) vidUpdateLoupe();
     };
     p.showNote = function(msg){ if(p.note){ p.note.textContent = msg || ""; p.note.style.display = msg ? "block" : "none"; } if(p.canvas) p.canvas.style.display = msg ? "none" : "inline-block"; };
     p.activateClip = function(ci){ p.activeIdx = ci; p.destroyDecoder(); };
@@ -4030,9 +4114,9 @@ time
       if(!chartData || !chartGeom || cvEnd <= cvStart) return;
       var gm = chartGeom, x = gm.plotL + ((vidPosOff - cvStart) / (cvEnd - cvStart)) * gm.plotW;
       if(x < gm.plotL - 2 || x > gm.plotL + gm.plotW + 2) return;
-      cx.strokeStyle = "rgba(74,168,255,.9)"; cx.lineWidth = 1.5;
+      cx.strokeStyle = "rgba(255,150,40,.92)"; cx.lineWidth = 1.5;
       cx.beginPath(); cx.moveTo(x, gm.padTop); cx.lineTo(x, gm.padTop + gm.plotH); cx.stroke();
-      cx.fillStyle = "rgba(74,168,255,.95)";
+      cx.fillStyle = "rgba(255,150,40,.97)";
       cx.beginPath(); cx.moveTo(x - 4, gm.padTop); cx.lineTo(x + 4, gm.padTop); cx.lineTo(x, gm.padTop + 7); cx.closePath(); cx.fill();
       return;
     }
@@ -4041,9 +4125,9 @@ time
     if(!stats || viewEnd <= viewStart) return;
     var x2 = ((vidPosOff - viewStart) / (viewEnd - viewStart)) * g.w;
     if(x2 < -2 || x2 > g.w + 2) return;
-    ctx.strokeStyle = "rgba(74,168,255,.9)"; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(255,150,40,.92)"; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x2, 0); ctx.lineTo(x2, g.h); ctx.stroke();
-    ctx.fillStyle = "rgba(74,168,255,.95)";
+    ctx.fillStyle = "rgba(255,150,40,.97)";
     ctx.beginPath(); ctx.moveTo(x2 - 4, 0); ctx.lineTo(x2 + 4, 0); ctx.lineTo(x2, 7); ctx.closePath(); ctx.fill();
   }
 
@@ -4068,7 +4152,10 @@ time
     }
     return merged;
   }
-  function vidDrawCoverage(ctx, mode, offToX, vLo, vHi, xL, xR, yTop, yBot){
+  // trackTop (optional) places the per-camera coverage tracks; defaults to yTop
+  // (the trace draws them at the very top edge). The chart passes a value above
+  // its plot so the tracks sit just over the value lines instead of on top of them.
+  function vidDrawCoverage(ctx, mode, offToX, vLo, vHi, xL, xR, yTop, yBot, trackTop){
     if(!vidActive || vidMode !== mode || !vidPlayers.length) return;
     // one merged-pixel-span row per camera, plus the union of all spans for the dim
     var rows = [], union = [], anyReady = false;
@@ -4098,8 +4185,9 @@ time
     // 2) one coverage track per camera, stacked at the top: faint full-width bed,
     //    solid in the camera's colour where it has footage
     var th = single ? 5 : 4, pitch = th + 2;
+    var tt = (trackTop == null) ? yTop : trackTop;
     rows.forEach(function(r, ri){
-      var y = yTop + ri * pitch;
+      var y = tt + ri * pitch;
       ctx.globalAlpha = 0.14; ctx.fillStyle = r.color; ctx.fillRect(xL, y, xR - xL, th);
       ctx.globalAlpha = 0.85;
       for(var m = 0; m < r.segs.length; m++){
@@ -4113,7 +4201,7 @@ time
     if(single){
       ctx.fillStyle = "rgba(150,200,255,.9)"; ctx.font = '9px ui-monospace,monospace';
       ctx.textAlign = "start"; ctx.textBaseline = "top";
-      ctx.fillText("video", xL + 4, yTop + th + 1);
+      ctx.fillText("video", xL + 4, tt + th + 1);
     }
     ctx.restore();
   }
@@ -4176,8 +4264,14 @@ time
   function vidBuildPanels(){
     if(vidMode === "chart"){
       var grid = $("chart-vidgrid"); if(!grid) return;
-      grid.innerHTML = "";
-      vidPlayers.forEach(function(p){
+      grid.innerHTML = ""; vidFocusIdx = -1;
+      var multi = vidPlayers.length > 1;
+      grid.classList.toggle("multi", multi);
+      grid.classList.remove("focused");
+      // video-only Visualizer → start the (solo) video large; with value lines, modest
+      var videoOnly = !(chartData && chartData.lines && chartData.lines.length);
+      grid.style.setProperty("--solo-w", videoOnly ? "86%" : "52%");
+      vidPlayers.forEach(function(p, i){
         var panel = document.createElement("div"); panel.className = "vidpanel"; panel.style.borderTopColor = p.color;
         var cap = document.createElement("div"); cap.className = "vidcap"; cap.style.color = p.color;
         cap.innerHTML = esc(p.name) + ' <span class="cl"></span>';
@@ -4187,13 +4281,221 @@ time
         wrap.appendChild(cv); wrap.appendChild(note);
         panel.appendChild(cap); panel.appendChild(wrap);
         grid.appendChild(panel);
-        p.canvas = cv; p.note = note; p.capEl = cap.querySelector(".cl");
+        p.canvas = cv; p.note = note; p.capEl = cap.querySelector(".cl"); p.panel = panel;
+        // click to enlarge this camera / hide the rest (only worth it with several).
+        // A click that ends a resize drag is suppressed so it doesn't toggle focus.
+        if(multi) panel.addEventListener("click", function(){ if(vidSuppressClick) return; vidFocusCam(i); });
       });
+      vidApplyFocus();
     } else {
       var p0 = vidPlayers[0]; if(!p0) return;
       p0.canvas = $("vid-canvas"); p0.note = $("vid-note"); p0.capEl = $("vid-clip");
       if(p0.canvas){ p0.canvas._blank = false; p0.canvas.style.display = "inline-block"; }
     }
+  }
+  // ---- focus one camera (chart grid): enlarge it, hide the others ----
+  function vidApplyFocus(){
+    var grid = $("chart-vidgrid"); if(!grid) return;
+    var focused = vidFocusIdx >= 0;
+    grid.classList.toggle("focused", focused);
+    vidPlayers.forEach(function(p, i){ if(p.panel) p.panel.classList.toggle("focus", i === vidFocusIdx); });
+    var btn = $("chart-vid-all"); if(btn) btn.style.display = focused ? "" : "none";
+    vidUpdateSolo();
+  }
+  function vidFocusCam(idx){
+    if(vidMode !== "chart" || vidPlayers.length < 2) return;
+    if(idx === vidFocusIdx) return;   // already enlarged — clicking it does nothing (Esc/All cameras to go back)
+    vidFocusIdx = idx;
+    // enlarging a camera should make it big; the user can still drag it smaller
+    var g = $("chart-vidgrid"); if(g) g.style.setProperty("--solo-w", "80%");
+    vidApplyFocus();
+  }
+  function vidUnfocus(){ if(vidFocusIdx >= 0){ vidFocusIdx = -1; vidApplyFocus(); return true; } return false; }
+  // ---- a single visible video is freely resizable (aspect kept by width:auto) ----
+  // The "solo" video is the only panel showing: a single-camera Visualizer, or the
+  // currently-focused camera in a multi-camera one.
+  var vidRszEl = null, vidSuppressClick = false;
+  function vidSoloPlayer(){
+    if(vidMode !== "chart") return null;
+    if(vidPlayers.length === 1) return vidPlayers[0] || null;
+    if(vidFocusIdx >= 0) return vidPlayers[vidFocusIdx] || null;
+    return null;
+  }
+  function vidSoloPanel(){ var p = vidSoloPlayer(); return p ? p.panel : null; }
+  function vidUpdateSolo(){
+    var grid = $("chart-vidgrid"); if(!grid) return;
+    var soloP = vidSoloPlayer(), solo = soloP ? soloP.panel : null;
+    grid.classList.toggle("solo", !!solo);
+    vidPlayers.forEach(function(p){ if(p.panel) p.panel.classList.toggle("solo", p.panel === solo); });
+    // resize grip on the solo panel
+    if(solo){
+      if(!vidRszEl){
+        vidRszEl = document.createElement("div"); vidRszEl.className = "vid-rsz";
+        vidRszEl.title = "Drag to resize the video";
+        vidRszEl.addEventListener("pointerdown", vidRszStart);
+        vidRszEl.addEventListener("click", function(ev){ ev.stopPropagation(); });   // don't toggle focus
+      }
+      if(vidRszEl.parentNode !== solo) solo.appendChild(vidRszEl);
+    } else if(vidRszEl && vidRszEl.parentNode){
+      vidRszEl.parentNode.removeChild(vidRszEl);
+    }
+    // ROI selection overlay (only on a solo video); a new solo target resets the ROI
+    if(soloP !== vidRoiPlayer){ vidClearRoi(); vidRoiPlayer = soloP; }
+    if(solo){
+      var wrap = solo.querySelector(".vidwrap");
+      if(!vidOvl){
+        vidOvl = document.createElement("canvas"); vidOvl.className = "vid-ovl";
+        vidOvl.addEventListener("pointerdown", vidOvlDown);
+        // the solo video covers itself with this overlay — a click here must never
+        // toggle focus (use the All-cameras button or Esc to go back)
+        vidOvl.addEventListener("click", function(ev){ ev.stopPropagation(); });
+      }
+      if(wrap && vidOvl.parentNode !== wrap) wrap.appendChild(vidOvl);
+      vidDrawOverlay();
+    } else if(vidOvl && vidOvl.parentNode){
+      vidOvl.parentNode.removeChild(vidOvl);
+    }
+  }
+  function vidRszStart(e){
+    var solo = vidSoloPanel(), grid = $("chart-vidgrid"); if(!solo || !grid) return;
+    e.preventDefault(); e.stopPropagation();
+    vidSuppressClick = true;     // swallow the click this drag will generate (would toggle focus)
+    var startX = e.clientX, startW = solo.getBoundingClientRect().width, maxW = grid.clientWidth || startW;
+    function move(ev){
+      var w = startW + (ev.clientX - startX);
+      if(w < 140) w = 140; if(w > maxW) w = maxW;
+      grid.style.setProperty("--solo-w", w + "px");
+      if(vidRoi){ vidDrawOverlay(); vidUpdateLoupe(); }   // ROI box/loupe follow the new size
+    }
+    function up(){
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      // the click fires right after this pointerup; clear the guard on the next tick
+      setTimeout(function(){ vidSuppressClick = false; }, 0);
+    }
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  }
+  // ---- ROI loupe: drag a square on the solo video, view it zoomed at the right ----
+  // ROI is stored in source-FRAME pixels (the canvas holds native-res frames), so it
+  // survives video resizing; display↔frame conversion uses the overlay's measured size.
+  var vidRoi = null, vidRoiPlayer = null, vidOvl = null, vidLoupeEl = null, vidLoupeCv = null;
+  function vidFrameDims(){ var p = vidSoloPlayer(); return (p && p.canvas && p.canvas.width) ? { p: p, fw: p.canvas.width, fh: p.canvas.height } : null; }
+  function vidClampRoi(x, y, s, fw, fh){
+    s = Math.max(16, Math.min(s, Math.min(fw, fh)));
+    if(x < 0) x = 0; if(y < 0) y = 0;
+    if(x + s > fw) x = fw - s; if(y + s > fh) y = fh - s;
+    return { x: Math.round(x), y: Math.round(y), s: Math.round(s) };
+  }
+  function vidDrawOverlay(){
+    if(!vidOvl) return;
+    var rect = vidOvl.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, w = rect.width, h = rect.height;
+    if(!w || !h) return;
+    if(vidOvl.width !== Math.round(w * dpr)){ vidOvl.width = Math.round(w * dpr); vidOvl.height = Math.round(h * dpr); }
+    var ctx = vidOvl.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    var d = vidFrameDims(); if(!d || !vidRoi) return;
+    var sc = d.fw / w;                                   // frame px per display px
+    var bx = vidRoi.x / sc, by = vidRoi.y / sc, bs = vidRoi.s / sc;
+    ctx.strokeStyle = "rgba(52,224,196,.95)"; ctx.lineWidth = 1.5; ctx.strokeRect(bx, by, bs, bs);
+    ctx.fillStyle = "rgba(52,224,196,.95)";
+    [[bx, by], [bx + bs, by], [bx, by + bs], [bx + bs, by + bs]].forEach(function(c){ ctx.fillRect(c[0] - 3, c[1] - 3, 6, 6); });
+  }
+  function vidEnsureLoupe(){
+    if(vidLoupeEl) return;
+    vidLoupeEl = document.createElement("div"); vidLoupeEl.className = "vidloupe";
+    var cap = document.createElement("div"); cap.className = "vidcap";
+    cap.innerHTML = '<span>zoom</span><span class="lpclose" title="Clear selection (Esc)">✕</span>';
+    vidLoupeCv = document.createElement("canvas");
+    vidLoupeEl.appendChild(cap); vidLoupeEl.appendChild(vidLoupeCv);
+    cap.querySelector(".lpclose").addEventListener("click", function(e){ e.stopPropagation(); vidClearRoi(); });
+  }
+  function vidShowLoupe(){
+    var grid = $("chart-vidgrid"); if(!grid) return;
+    vidEnsureLoupe();
+    var fresh = !grid.classList.contains("loupe");
+    if(vidLoupeEl.parentNode !== grid) grid.appendChild(vidLoupeEl);
+    grid.classList.add("loupe");
+    grid.style.display = "flex";    // beat the inline display:grid set by vidShowPanel
+    // showing the loupe caps the video width (→ its height changes); re-fit once the
+    // layout has settled so the loupe matches the final video height
+    if(fresh) requestAnimationFrame(function(){ vidUpdateLoupe(); });
+  }
+  function vidHideLoupe(){
+    var grid = $("chart-vidgrid");
+    if(vidLoupeEl && vidLoupeEl.parentNode) vidLoupeEl.parentNode.removeChild(vidLoupeEl);
+    if(grid){ grid.classList.remove("loupe"); if(grid.style.display !== "none") grid.style.display = "grid"; }
+  }
+  function vidClearRoi(){ vidRoi = null; vidHideLoupe(); vidFitSolo(); vidDrawOverlay(); }
+  // resolve the solo video's desired width (--solo-w, a % or px) into pixels
+  function vidResolveSoloW(grid, cw){
+    var raw = (getComputedStyle(grid).getPropertyValue("--solo-w") || "").trim();
+    if(/%$/.test(raw)) return cw * parseFloat(raw) / 100;
+    if(/px$/.test(raw)) return parseFloat(raw);
+    return cw * 0.52;
+  }
+  // When the loupe is open, the (square, full-video-height) zoom must fit to the RIGHT
+  // of the video. Since loupe width = video height = videoWidth·aspect, cap the video
+  // width so videoWidth·(1+aspect) ≤ container, then the loupe sits beside it (no wrap).
+  function vidFitSolo(){
+    var grid = $("chart-vidgrid"); if(!grid) return;
+    var p = vidSoloPlayer(), panel = p ? p.panel : null; if(!panel) return;
+    if(!grid.classList.contains("loupe")){ panel.style.width = ""; return; }   // CSS var controls it
+    var d = vidFrameDims(), cw = grid.clientWidth || 0; if(!d || !cw){ panel.style.width = ""; return; }
+    var aspect = d.fh / d.fw, gap = 12;
+    var maxFit = (cw - gap) / (1 + aspect);
+    var w = Math.max(140, Math.min(vidResolveSoloW(grid, cw), maxFit));
+    panel.style.width = Math.floor(w) + "px";
+  }
+  function vidUpdateLoupe(){
+    if(!vidRoi || !vidLoupeCv) return;
+    var p = vidSoloPlayer(); if(!p || !p.canvas) return;
+    vidFitSolo();                                   // size the video so the loupe fits to its right
+    var side = Math.round(p.canvas.clientHeight || 240), dpr = window.devicePixelRatio || 1;
+    if(vidLoupeCv._side !== side){
+      vidLoupeCv.style.width = side + "px"; vidLoupeCv.style.height = side + "px";
+      vidLoupeCv.width = Math.round(side * dpr); vidLoupeCv.height = Math.round(side * dpr);
+      vidLoupeCv._side = side;
+    }
+    var ctx = vidLoupeCv.getContext("2d"); ctx.clearRect(0, 0, vidLoupeCv.width, vidLoupeCv.height);
+    try{ ctx.drawImage(p.canvas, vidRoi.x, vidRoi.y, vidRoi.s, vidRoi.s, 0, 0, vidLoupeCv.width, vidLoupeCv.height); }catch(e){}
+  }
+  function vidOvlDown(e){
+    var d = vidFrameDims(); if(!d) return;
+    e.preventDefault();
+    var rect = vidOvl.getBoundingClientRect(), sc = d.fw / rect.width;   // frame px per display px
+    var ax = (e.clientX - rect.left) * sc, ay = (e.clientY - rect.top) * sc;   // anchor in frame px
+    var mode = "new", r0 = vidRoi ? { x: vidRoi.x, y: vidRoi.y, s: vidRoi.s } : null, hit = -1;
+    if(r0){
+      var H = 12 * sc, cs = [[r0.x, r0.y], [r0.x + r0.s, r0.y], [r0.x, r0.y + r0.s], [r0.x + r0.s, r0.y + r0.s]];
+      for(var i = 0; i < 4; i++){ if(Math.abs(ax - cs[i][0]) <= H && Math.abs(ay - cs[i][1]) <= H){ mode = "resize"; hit = i; break; } }
+      if(mode !== "resize" && ax >= r0.x && ax <= r0.x + r0.s && ay >= r0.y && ay <= r0.y + r0.s) mode = "move";
+    }
+    var moved = false;
+    function move(ev){
+      // re-measure each move: showing the loupe can resize the video mid-drag
+      var r = vidOvl.getBoundingClientRect(), s2 = d.fw / r.width;
+      var cx = (ev.clientX - r.left) * s2, cy = (ev.clientY - r.top) * s2;
+      if(!moved && (Math.abs(cx - ax) + Math.abs(cy - ay)) < 3 * sc) return;
+      moved = true; vidSuppressClick = true;
+      if(mode === "move"){
+        vidRoi = vidClampRoi(r0.x + (cx - ax), r0.y + (cy - ay), r0.s, d.fw, d.fh);
+      } else if(mode === "resize"){
+        // opposite corner stays fixed; keep it square
+        var fixed = [[r0.x + r0.s, r0.y + r0.s], [r0.x, r0.y + r0.s], [r0.x + r0.s, r0.y], [r0.x, r0.y]][hit];
+        var s = Math.max(Math.abs(cx - fixed[0]), Math.abs(cy - fixed[1]));
+        var nx = (fixed[0] <= cx) ? fixed[0] : fixed[0] - s;   // keep the fixed corner anchored
+        var ny = (fixed[1] <= cy) ? fixed[1] : fixed[1] - s;
+        vidRoi = vidClampRoi(nx, ny, s, d.fw, d.fh);
+      } else {
+        var side = Math.max(Math.abs(cx - ax), Math.abs(cy - ay));
+        var x = (cx >= ax) ? ax : ax - side, y = (cy >= ay) ? ay : ay - side;
+        vidRoi = vidClampRoi(x, y, side, d.fw, d.fh);
+      }
+      vidShowLoupe(); vidDrawOverlay(); vidUpdateLoupe();
+    }
+    function up(){
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      if(moved) setTimeout(function(){ vidSuppressClick = false; }, 0);
+    }
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   }
   // module-level message (no codec / can't read clips) — replaces the panels
   function vidShowNote(msg){
@@ -4265,7 +4567,10 @@ time
     vidActive = false; vidPlaying = false; vidSeekHold = false;
     if(vidPhReq){ cancelAnimationFrame(vidPhReq); vidPhReq = 0; }
     vidPlayers.forEach(function(p){ p.destroyDecoder(); });
-    vidPlayers = []; vidPosOff = 0;
+    vidPlayers = []; vidPosOff = 0; vidFocusIdx = -1;
+    vidRoi = null; vidRoiPlayer = null; vidHideLoupe();
+    var allBtn = $("chart-vid-all"); if(allBtn) allBtn.style.display = "none";
+    var grid = $("chart-vidgrid"); if(grid) grid.classList.remove("focused", "multi", "solo", "loupe");
     vidHideAllPanels();
     var g = vidPhCtx(); if(g) g.ctx.clearRect(0, 0, g.w, g.h);
     var gc = vidChartPhCtx(); if(gc) gc.ctx.clearRect(0, 0, gc.w, gc.h);
@@ -4367,23 +4672,24 @@ time
   }
   function chartSelCount(){ return Object.keys(chartSel).length; }
   function updateChartBar(){
-    var n = chartSelCount();
-    $("chartcount").textContent = n + " selected";
+    var n = chartSelCount(), badge = $("chartcount");
+    badge.textContent = n;
+    badge.style.display = n ? "" : "none";
     $("chartviz").disabled = !n;
+    $("chartviz").setAttribute("data-tip",
+      n ? ("Visualize " + n + " selected stream" + (n === 1 ? "" : "s")) : "Visualize the selected streams");
   }
   function enterChartEdit(){
     chartEditMode = true; chartSel = {};
-    $("chartnew").style.display = "none";
-    $("chartbar").style.display = "flex";
     $("explist").classList.add("editing");
     updateChartBar();
+    updateHeaderNav();
     refreshCards();
   }
   function exitChartEdit(){
     chartEditMode = false; chartSel = {};
-    $("chartbar").style.display = "none";
-    $("chartnew").style.display = "";
     $("explist").classList.remove("editing");
+    updateHeaderNav();
     refreshCards();
   }
   function refreshCards(){
@@ -4614,7 +4920,7 @@ time
   var CHART_MAX_AXES = 6;   // beyond this many visible lines, fall back to one shared axis
   function drawChart(){
     if(!chartData) return;
-    var cv = $("chart"); var dim = setup(cv, 360);
+    var cv = $("chart"); var dim = setup(cv, chartH);
     var ctx = dim.ctx, W = dim.w, H = dim.h;
     ctx.clearRect(0, 0, W, H);
 
@@ -4627,7 +4933,12 @@ time
     var perLine = norm && vis.length > 0 && vis.length <= CHART_MAX_AXES;
     var nAxes = perLine ? vis.length : 1;
     var PADL = nAxes * CHART_AXW;
-    var padTop = 16, padBot = 26, plotH = H - padTop - padBot;   // room for top/bottom axis labels + X ticks
+    // when camera coverage tracks are shown, reserve room for them ABOVE the plot
+    // so they sit just over the value lines rather than overlaying them
+    var vidTrackN = (vidActive && vidMode === "chart" && vidPlayers.length) ? vidPlayers.length : 0;
+    var vidTrackTh = vidTrackN === 1 ? 5 : 4;
+    var vidStackH = vidTrackN ? (vidTrackN * (vidTrackTh + 2) + (vidTrackN === 1 ? 12 : 4)) : 0;
+    var padTop = 16 + vidStackH, padBot = 26, plotH = H - padTop - padBot;   // room for top/bottom axis labels + X ticks
     var plotL = PADL, plotW = W - PADL;
     var t0 = cvStart, t1 = cvEnd, span = (t1 - t0) || 1;
 
@@ -4730,7 +5041,7 @@ time
 
     // mark where the camera video actually has frames (track + dimmed gaps)
     vidDrawCoverage(ctx, "chart", function(o){ return plotL + (o - t0)/span*plotW; },
-                    t0, t1, plotL, plotL + plotW, padTop, padTop + plotH);
+                    t0, t1, plotL, plotL + plotW, padTop, padTop + plotH, 16);
 
     chartGeom = { plotL: plotL, plotW: plotW, padTop: padTop, plotH: plotH };
     if(abs){
@@ -5024,6 +5335,14 @@ time
     fileInput.click();
   });
   $("hdr-back").addEventListener("click", goBackToDevices);
+  // Esc: first leave a focused (enlarged) camera; otherwise return to the device
+  // list (same condition as the back button being shown).
+  window.addEventListener("keydown", function(e){
+    if(e.key !== "Escape") return;
+    if(vidActive && vidMode === "chart" && vidRoi){ vidClearRoi(); e.preventDefault(); return; }
+    if(vidActive && vidMode === "chart" && vidUnfocus()){ e.preventDefault(); return; }
+    if(experiment && (currentDevice || isShown("chartview"))){ e.preventDefault(); goBackToDevices(); }
+  });
   // custom stream dropdown: toggle the popup, pick an option, close on outside click
   $("regsel-btn").addEventListener("click", function(e){
     e.stopPropagation();
@@ -5243,6 +5562,7 @@ time
     rt = setTimeout(function(){
       if(chartData && $("chartview").style.display !== "none") drawChart();
       if(stats){ drawTrace(); drawHeat(); }
+      if(vidRoi){ vidFitSolo(); vidUpdateLoupe(); vidDrawOverlay(); }
     }, 120);
   });
 
@@ -5256,6 +5576,19 @@ time
   if($("vid-speed")) $("vid-speed").addEventListener("change", vidSpeedHandler);
   if($("chart-vid-play")) $("chart-vid-play").addEventListener("click", vidToggle);
   if($("chart-vid-speed")) $("chart-vid-speed").addEventListener("change", vidSpeedHandler);
+  if($("chart-vid-all")) $("chart-vid-all").addEventListener("click", vidUnfocus);
+  // drag the handle under the graph to resize its height (vertical only)
+  if($("chart-vresize")) $("chart-vresize").addEventListener("pointerdown", function(e){
+    e.preventDefault();
+    var startY = e.clientY, startH = chartH, maxH = Math.round((window.innerHeight || 800) * 0.85);
+    function move(ev){
+      var h = startH + (ev.clientY - startY);
+      if(h < 140) h = 140; if(h > maxH) h = maxH;
+      chartH = h; drawChart(); if(vidActive && vidMode === "chart") vidDrawPlayhead();
+    }
+    function up(){ window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); }
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
 
   // restore persisted settings and reflect them into the controls
   loadSettings();
