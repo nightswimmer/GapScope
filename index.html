@@ -23,6 +23,8 @@
     --drop-hot:#ff2d55;
     --tight:#9d8cff;
     --tight-dim:rgba(157,140,255,.14);
+    --dup:#3bd6e0;
+    --ooo:#ff6fd0;
     --accent:#4aa8ff;
     --mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -180,6 +182,9 @@
   .devcard tbody tr[data-i]:hover td:first-child{color:var(--accent)}
   .devcard td:first-child{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
   .devcard td.drops{color:var(--drop)}
+  .devcard td.warncell{color:var(--warn)}
+  .devcard td.drops,.devcard td.warncell{cursor:help}            /* hover for the problem breakdown */
+  .devcard thead th.warnh{color:var(--warn);cursor:help}
   .devcard td.ok{color:var(--phosphor)}
   /* array-register value sub-rows + chart-selection highlight */
   .devcard tbody tr.subrow td{padding-top:3px;padding-bottom:3px;color:var(--text-faint);font-size:11px}
@@ -292,7 +297,17 @@
   .readout .hi{color:var(--drop)}
   .readout .ok{color:var(--phosphor)}
   .readout .tight{color:var(--tight)}
+  .readout .dup{color:var(--dup)}
+  .readout .ooo{color:var(--ooo)}
   .readout .ts{color:#9cc2ee}
+  /* problems popup: a cursor-following card reusing the readout look, but fixed
+     to the viewport so it can float over the device-card grid */
+  #prob-ro{position:fixed;transform:translate(-50%,calc(-100% - 12px));white-space:normal;max-width:340px;line-height:1.65}
+  #prob-ro .ptitle{color:var(--text-faint);font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px}
+  #prob-ro .prow{display:flex;gap:8px;align-items:baseline}
+  #prob-ro .prow .dot{flex:none;width:7px;height:7px;border-radius:50%;margin-top:4px}
+  #prob-ro .prow .ptxt{color:var(--text)}
+  #prob-ro .prow .pwhere{color:var(--text-dim)}
 
   /* table */
   table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
@@ -403,6 +418,9 @@ time
     <div class="devgrid" id="devgrid"></div>
   </div>
 
+  <!-- floating breakdown popup for a device card's potential-problems cell -->
+  <div class="readout" id="prob-ro"></div>
+
   <!-- combined value chart -->
   <div class="chartview" id="chartview">
     <div class="exphead">
@@ -470,6 +488,8 @@ time
         <div class="item"><span class="sw" style="background:var(--drop)"></span>10–99</div>
         <div class="item"><span class="sw" style="background:var(--drop-hot)"></span>100+</div>
         <div class="item" style="margin-left:auto"><span class="sw" style="background:var(--tight)"></span>too close ▾</div>
+        <div class="item"><span class="sw" style="background:var(--dup);border-radius:50%"></span>duplicate</div>
+        <div class="item"><span class="sw" style="background:var(--ooo);border-radius:50%"></span>out-of-order</div>
       </div>
       <div class="legend" id="chan-legend" style="display:none"></div>
       <div class="canvas-wrap" id="trace-wrap">
@@ -488,6 +508,8 @@ time
         <div class="item"><span class="sw" style="background:var(--orange)"></span>2–9</div>
         <div class="item"><span class="sw" style="background:var(--drop)"></span>10–99</div>
         <div class="item"><span class="sw" style="background:var(--drop-hot)"></span>100+</div>
+        <div class="item" style="margin-left:auto"><span class="sw" style="background:var(--dup);border-radius:50%"></span>duplicate ⌃</div>
+        <div class="item"><span class="sw" style="background:var(--ooo);border-radius:50%"></span>out-of-order ⌄</div>
       </div>
       <div class="canvas-wrap" id="heat-wrap" style="padding-bottom:14px">
         <canvas id="heat"></canvas>
@@ -547,6 +569,7 @@ time
   var showRaw = false, showAnom = true, showTs = false;  // view-layer toggles
   var chanHidden = [];       // chanHidden[k] true → raw channel k hidden (legend toggle)
   var malformed = 0, outOfOrder = 0, duplicates = 0;
+  var malformedFiles = [];   // [{name,count}] — which files held the unparseable lines
   // Harp binary support: the schema applied to the CURRENT load — a parsed
   // device.yml ({device, whoAmI, registers:{addr:{name,members}}}) — plus a
   // short description of the most recent binary load for the meta line.
@@ -586,6 +609,7 @@ time
   var stats = null;
   var gapEvents = [];        // {start, end, gapNs, missing}
   var tightEvents = [];      // {start, gapNs} for spacings below closeNs
+  var oooEvents = [];        // out-of-order: {at, target} sorted by at — at=msg's (too-early) time, target=where it'd sit to be in order
   var eventList = [];        // merged anomalies sorted by time: {t, kind, gapNs, missing}
   var eventTimes = [];       // parallel array of t for binary search
   var silenceEvents = [];    // {start, end, gapNs} inter-burst silences (burst streams only)
@@ -657,7 +681,7 @@ time
     refOriginNs = (experiment && experiment.timeline) ? experiment.timeline.startNs : null;
     firstNs = 0n; offsets = []; gaps = [];
     channels = []; channelNames = []; channelCount = 0; chMin = []; chMax = []; chanHidden = [];
-    malformed = 0; outOfOrder = 0; duplicates = 0;
+    malformed = 0; outOfOrder = 0; duplicates = 0; malformedFiles = [];
     harpInfo = "";                // description of the binary load (set by the Harp parser)
     viewStart = 0; viewEnd = 0;   // force full-extent view for the new capture
     heatEpoch++; heatCache = null;   // invalidate the cached heatmap columns
@@ -667,7 +691,10 @@ time
   // Per-line parser. Holds parse state (header detection, ordering) across
   // chunk boundaries so the file can be fed one line at a time as it streams in.
   function makeLineParser(){
-    var started = false, prev = null, headerFields = null, shiftNs = 0n;
+    var started = false, prev = null, headerFields = null, shiftNs = 0n, atFileStart = true;
+    // Called at each file boundary when chunks are combined through one parser:
+    // a leading unparseable line in any chunk is its header row, not a parse error.
+    function newFile(){ atFileStart = true; }
     function feed(raw){
       if(!raw) return;
       var parts = raw.split(",");
@@ -675,9 +702,11 @@ time
       if(!field) return;
       var ts = parseTsNs(field);
       if(ts === null){
-        if(!started){ if(!headerFields) headerFields = parts; return; } // header / preamble
+        if(!started){ if(!headerFields) headerFields = parts; atFileStart = false; return; } // header / preamble
+        if(atFileStart){ atFileStart = false; return; }   // a later chunk's header row — skip, don't count
         malformed++; return;
       }
+      atFileStart = false;   // a valid row: this chunk's preamble (if any) is past
       if(!started){
         started = true;
         // a seconds column counting from the Harp epoch (1904) — first value
@@ -711,7 +740,7 @@ time
       }
       prev = off;
     }
-    return { feed: feed };
+    return { feed: feed, newFile: newFile };
   }
 
   // Stream the file in byte chunks so we never hold the whole file as one
@@ -727,6 +756,8 @@ time
       var tail = "";                 // incomplete final line carried between chunks
       var pos = 0;
       var total = file.size || 0;
+      var fm0 = malformed;           // malformed count before this file, for attribution
+      var lineNo = 0, firstErr = 0;  // physical line counter + line of the first parse error
       var fr = new FileReader();
       fr.onerror = function(){ reject(fr.error || new Error("read error")); };
       fr.onload = function(){
@@ -737,11 +768,15 @@ time
         // While more chunks remain, the last element is a partial line; on the
         // final chunk every element is complete (a trailing "" is ignored).
         tail = last ? "" : lines.pop();
-        for(var j=0; j<lines.length; j++) parser.feed(lines[j]);
+        for(var j=0; j<lines.length; j++){
+          var before = malformed;
+          parser.feed(lines[j]); lineNo++;
+          if(malformed > before && !firstErr) firstErr = lineNo;
+        }
         var frac = total ? pos/total : 1;
         pfill.style.width = (frac*100).toFixed(1) + "%";
         ptxt.textContent = "Scanning samples… " + offsets.length.toLocaleString();
-        if(last) resolve();
+        if(last){ if(malformed > fm0) malformedFiles.push({ name: file.name, count: malformed - fm0, firstLine: firstErr }); resolve(); }
         else setTimeout(readNext, 0);   // yield to the UI thread between chunks
       };
       function readNext(){
@@ -875,6 +910,7 @@ time
       function nextFile(){
         if(fi >= files.length){ resolve(); return; }
         var file = files[fi];
+        var fm0 = malformed;          // malformed count before this file, for attribution
         var carry = new Uint8Array(0), pos = 0, total = file.size || 0;
         var fr = new FileReader();
         fr.onerror = function(){ reject(fr.error || new Error("read error")); };
@@ -885,7 +921,7 @@ time
           pfill.style.width = (frac*100).toFixed(1) + "%";
           ptxt.textContent = "Scanning messages… " + offsets.length.toLocaleString()
             + (files.length > 1 ? "  (file "+(fi+1)+"/"+files.length+")" : "");
-          if(last){ done += total; fi++; setTimeout(nextFile, 0); }   // carry dropped at file end
+          if(last){ if(malformed > fm0) malformedFiles.push({ name: file.name, count: malformed - fm0 }); done += total; fi++; setTimeout(nextFile, 0); }   // carry dropped at file end
           else setTimeout(readChunk, 0);
         };
         function readChunk(){
@@ -914,6 +950,9 @@ time
       function nextFile(){
         if(fi >= files.length){ resolve(); return; }
         var file = files[fi];
+        parser.newFile();             // a leading unparseable line here is this chunk's header
+        var fm0 = malformed;          // malformed count before this file, for attribution
+        var lineNo = 0, firstErr = 0; // physical line counter + line of the first parse error
         var decoder = new TextDecoder("utf-8"), tail = "", pos = 0, total = file.size || 0;
         var fr = new FileReader();
         fr.onerror = function(){ reject(fr.error || new Error("read error")); };
@@ -922,12 +961,16 @@ time
           var combined = tail + decoder.decode(new Uint8Array(fr.result), { stream: !last });
           var lines = combined.split(/\r?\n/);
           tail = last ? "" : lines.pop();
-          for(var j=0; j<lines.length; j++) parser.feed(lines[j]);
+          for(var j=0; j<lines.length; j++){
+            var before = malformed;
+            parser.feed(lines[j]); lineNo++;
+            if(malformed > before && !firstErr) firstErr = lineNo;
+          }
           var frac = grand ? (done + pos)/grand : 1;
           pfill.style.width = (frac*100).toFixed(1) + "%";
           ptxt.textContent = "Scanning samples… " + offsets.length.toLocaleString()
             + (files.length > 1 ? "  (file "+(fi+1)+"/"+files.length+")" : "");
-          if(last){ done += total; fi++; setTimeout(nextFile, 0); }
+          if(last){ if(malformed > fm0) malformedFiles.push({ name: file.name, count: malformed - fm0, firstLine: firstErr }); done += total; fi++; setTimeout(nextFile, 0); }
           else setTimeout(readChunk, 0);
         };
         function readChunk(){ var end = Math.min(pos + CHUNK, total); var sl = file.slice(pos, end); pos = end; fr.readAsArrayBuffer(sl); }
@@ -1463,6 +1506,10 @@ time
     autoClass = cl.type;
     streamClass = (streamType === "auto") ? cl.type : streamType;
     var pontual = (streamClass === "pontual");
+    // too-close is measured against the cadence floor (closeFactor×Δt); recompute
+    // it here so a type override is honored, and zero it for pontual — a sporadic
+    // stream has no cadence, so no spacing is "too close"
+    closeNs = pontual ? 0 : closeFactor * intervalNs;
     // inter-burst silences are excluded from missing only for burst streams; the
     // threshold is the bimodal split (Infinity = no in-data silence band)
     var silenceNs = (streamClass === "burst") ? cl.silenceNs : Infinity;
@@ -1470,6 +1517,7 @@ time
     gapEvents = [];
     tightEvents = [];
     silenceEvents = [];
+    oooEvents = [];
     var worst = 0, missSum = 0, tightest = Infinity, runs = 1;
     for(var i=0;i<gaps.length;i++){
       var g = gaps[i];
@@ -1482,20 +1530,32 @@ time
         var miss = Math.max(1, Math.round(g/intervalNs) - 1);
         missSum += miss;
         gapEvents.push({ start: offsets[i], end: offsets[i+1], gapNs: g, missing: miss });
+      } else if(g < 0){
+        // out-of-order: the sample sits at offsets[i+1] (earlier than its
+        // predecessor offsets[i]); to be in order it would need offsets[i]'s time
+        oooEvents.push({ at: offsets[i+1], target: offsets[i] });
       }
-      if(g >= 0 && g < closeNs){
+      // too-close is measured against the cadence floor; a pontual stream has no
+      // cadence, so the concept doesn't apply. A 0-gap is a duplicate, not "too
+      // close" — require strictly positive spacing so the two stay distinct.
+      if(!pontual && g > 0 && g < closeNs){
         tightEvents.push({ start: offsets[i], gapNs: g });
         if(g < tightest) tightest = g;
       }
     }
     if(!isFinite(tightest)) tightest = 0;
+    // sorted by the dot's (too-early) time so the arrow renderer can binary-search
+    // the events on screen instead of scanning them all every frame
+    oooEvents.sort(function(a,b){ return a.at - b.at; });
 
-    // expected/dropped depend on the model: pontual counts nothing; burst counts
-    // only the within-run misses; constant compares its active span to Δt.
+    // expected/dropped depend on the model: pontual counts nothing. Constant and
+    // burst both count missing as the sum over detected dropouts (missSum) — so
+    // missing is always ≥ the dropout count, and the figure matches the
+    // device-card scan. (Burst's missSum already excludes inter-burst silences,
+    // handled above; constant has silenceNs=Infinity so every wide gap counts.)
     var expected, dropped;
     if(pontual){ expected = n; dropped = 0; }
-    else if(streamClass === "burst"){ expected = n + missSum; dropped = missSum; }
-    else { expected = intervalNs > 0 ? Math.round(dataSpanNs/intervalNs) + 1 : n; dropped = Math.max(0, expected - n); }
+    else { expected = n + missSum; dropped = missSum; }
 
     // merged, time-sorted anomaly list for inter-event measurement on hover
     eventList = [];
@@ -1607,6 +1667,15 @@ time
     while(lo < hi){ m = (lo+hi)>>1; if(gapEvents[m].start < t1) lo = m+1; else hi = m; }
     return { lo: first, hi: lo };
   }
+  // [lo, hi) range of oooEvents whose dot time `at` falls in [t0, t1); oooEvents
+  // are sorted by `at`, so this is two binary searches (arrow drawing stays cheap)
+  function visibleOooRange(t0, t1){
+    var n = oooEvents.length, lo, hi, m;
+    lo = 0; hi = n; while(lo < hi){ m = (lo+hi)>>1; if(oooEvents[m].at < t0) lo = m+1; else hi = m; }
+    var first = lo;
+    hi = n; while(lo < hi){ m = (lo+hi)>>1; if(oooEvents[m].at < t1) lo = m+1; else hi = m; }
+    return { lo: first, hi: lo };
+  }
 
   // ---------- measurement overlay (hover arrow between bracketing events) ----------
   function roundRect(ctx,x,y,w,h,r){
@@ -1714,7 +1783,8 @@ time
   // ---------- LOD pyramid ----------
   function newLevel(n, size){
     var L = { size:size, n:n, t:new Float64Array(n), maxGap:new Float64Array(n),
-              minGap:new Float64Array(n), present:new Float64Array(n), cmin:[], cmax:[] };
+              minGap:new Float64Array(n), present:new Float64Array(n),
+              dup:new Float64Array(n), ooo:new Float64Array(n), cmin:[], cmax:[] };
     for(var k=0;k<channelCount;k++){ L.cmin[k]=new Float64Array(n); L.cmax[k]=new Float64Array(n); }
     return L;
   }
@@ -1730,13 +1800,16 @@ time
     var lv = newLevel(n0, base), b, k;
     for(b=0; b<n0; b++){
       var a = b*base, e = Math.min(a+base, N);
-      var mg = 0, ng = Infinity, gEnd = Math.min(e-1, gn-1);
+      var mg = 0, ng = Infinity, nDup = 0, nOoo = 0, gEnd = Math.min(e-1, gn-1);
       for(var j=a; j<=gEnd; j++){
         var g = gaps[j];
         if(g > mg) mg = g;
-        if(g >= 0 && g < ng) ng = g;
+        if(g > 0 && g < ng) ng = g;   // strictly positive: a 0-gap is a duplicate, not "too close"
+        else if(g === 0) nDup++;
+        else if(g < 0) nOoo++;
       }
       lv.maxGap[b]=mg; lv.minGap[b]=ng; lv.present[b]=e-a; lv.t[b]=offsets[a];
+      lv.dup[b]=nDup; lv.ooo[b]=nOoo;
       for(k=0;k<channelCount;k++){
         var cmn=Infinity, cmx=-Infinity, arr=channels[k];
         for(var i=a;i<e;i++){ var v=arr[i]; if(v===v){ if(v<cmn)cmn=v; if(v>cmx)cmx=v; } }
@@ -1752,6 +1825,8 @@ time
         nl.maxGap[c] = two ? Math.max(prev.maxGap[i0],prev.maxGap[i1]) : prev.maxGap[i0];
         nl.minGap[c] = two ? Math.min(prev.minGap[i0],prev.minGap[i1]) : prev.minGap[i0];
         nl.present[c]= prev.present[i0] + (two ? prev.present[i1] : 0);
+        nl.dup[c]    = prev.dup[i0] + (two ? prev.dup[i1] : 0);
+        nl.ooo[c]    = prev.ooo[i0] + (two ? prev.ooo[i1] : 0);
         nl.t[c] = prev.t[i0];
         for(k=0;k<channelCount;k++){
           nl.cmin[k][c] = two ? Math.min(prev.cmin[k][i0],prev.cmin[k][i1]) : prev.cmin[k][i0];
@@ -1787,6 +1862,7 @@ time
     var present = new Float64Array(cols);
     var maxGap = new Float64Array(cols);
     var minGap = new Float64Array(cols); minGap.fill(Infinity);
+    var dup = new Float64Array(cols), ooo = new Float64Array(cols);   // duplicate / out-of-order counts per column
     var span = (t1 - t0) || 1;
     var iStart = lowerBound(t0);
     var iEnd = lowerBound(t1);
@@ -1800,6 +1876,7 @@ time
         var btN = (i+1 < level.n) ? level.t[i+1] : t1;   // bin's end time
         var cs0 = ((bt-t0)/span*cols)|0; if(cs0<0)cs0=0; if(cs0>=cols)cs0=cols-1;
         present[cs0] += level.present[i];                // samples cluster at bin start
+        dup[cs0] += level.dup[i]; ooo[cs0] += level.ooo[i];   // dup/ooo land at the bin's start column
         var ce0 = (((btN>t1?t1:btN)-t0)/span*cols)|0; if(ce0<0)ce0=0; if(ce0>=cols)ce0=cols-1;
         if(ce0 < cs0) ce0 = cs0;
         var mg0 = level.maxGap[i], ng0 = level.minGap[i];
@@ -1808,7 +1885,7 @@ time
           if(ng0 < minGap[c]) minGap[c] = ng0;
         }
       }
-      return { cols: cols, present: present, maxGap: maxGap, minGap: minGap, t0: t0, t1: t1, span: span };
+      return { cols: cols, present: present, maxGap: maxGap, minGap: minGap, dup: dup, ooo: ooo, t0: t0, t1: t1, span: span };
     }
     for(i = iStart; i < iEnd; i++){
       c = ((offsets[i]-t0)/span*cols)|0; if(c<0)c=0; if(c>=cols)c=cols-1;
@@ -1820,15 +1897,24 @@ time
     var gStart = Math.max(0, iStart-1);
     for(var k = gStart; k < iEnd && k < gaps.length; k++){
       var s = offsets[k], e = offsets[k+1], gk = gaps[k];
+      // a 0-gap (duplicate) or backwards step (out-of-order) has no forward time
+      // extent to spread; tally it at one column. A duplicate sits at the shared
+      // time (s===e); an out-of-order sample sits at its own (too-early) time e.
+      if(gk <= 0){
+        var ref = (gk === 0) ? s : e;
+        var cd = ((ref-t0)/span*cols)|0; if(cd<0)cd=0; if(cd>=cols)cd=cols-1;
+        if(ref >= t0 && ref < t1){ if(gk === 0) dup[cd]++; else ooo[cd]++; }
+        continue;
+      }
       if(e <= t0 || s >= t1) continue;
       var cs = (((s < t0 ? t0 : s)-t0)/span*cols)|0; if(cs<0)cs=0; if(cs>=cols)cs=cols-1;
       var ce = (((e > t1 ? t1 : e)-t0)/span*cols)|0; if(ce<0)ce=0; if(ce>=cols)ce=cols-1;
       for(c = cs; c <= ce; c++){
         if(gk > maxGap[c]) maxGap[c] = gk;
-        if(gk >= 0 && gk < minGap[c]) minGap[c] = gk;
+        if(gk < minGap[c]) minGap[c] = gk;   // gk>0 here, so duplicates never inflate "too close"
       }
     }
-    return { cols: cols, present: present, maxGap: maxGap, minGap: minGap, t0: t0, t1: t1, span: span };
+    return { cols: cols, present: present, maxGap: maxGap, minGap: minGap, dup: dup, ooo: ooo, t0: t0, t1: t1, span: span };
   }
 
   // per-pixel min/max for each channel over [t0,t1] (min/max decimation for the value plot)
@@ -1983,6 +2069,69 @@ time
     ctx.restore();
   }
 
+  // Arrows from each visible out-of-order dot to where the sample would sit to be
+  // in order (its predecessor's timestamp, always later → arrow points right).
+  // Drawn only when few are on screen, so a dense run of reorderings doesn't turn
+  // into a thicket; the head is clamped to the canvas when the target is off-edge.
+  function drawOooArrows(ctx, col, y, color){
+    var t0 = col.t0, span = col.span, w = col.cols, MAX = 80;
+    var r = visibleOooRange(t0, col.t1);
+    if(r.hi - r.lo === 0 || r.hi - r.lo > MAX) return;
+    ctx.save();
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.globalAlpha = 0.9; ctx.lineWidth = 1.2;
+    for(var i = r.lo; i < r.hi; i++){
+      var ev = oooEvents[i];
+      var xa = ((ev.at - t0)/span)*w;
+      var xt = ((ev.target - t0)/span)*w; if(xt > w) xt = w;
+      if(xt - xa < 2) continue;                  // sub-pixel jump: nothing to show
+      ctx.beginPath(); ctx.moveTo(xa, y); ctx.lineTo(xt, y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xt, y); ctx.lineTo(xt-5, y-3); ctx.lineTo(xt-5, y+3); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // duplicate (Δt=0) and out-of-order (Δt<0) timestamps: point events with no
+  // magnitude, drawn as small dots on a line — cyan above the centre, magenta
+  // below — so they read distinctly from the missing/too-close severity spikes.
+  // Each kind also gets a count label (dup above its dots, ooo below), shown only
+  // when the marked columns are far enough apart that no two labels touch; and
+  // out-of-order dots get an arrow to their in-order position.
+  function drawDupOoo(ctx, col, yc, sep){
+    if(!col.dup && !col.ooo) return;
+    ctx.save();
+    for(var pass=0; pass<2; pass++){
+      var isDup = pass === 0;
+      var arr = isDup ? col.dup : col.ooo;
+      if(!arr) continue;
+      var color = isDup ? "#3bd6e0" : "#ff6fd0", y = isDup ? yc - sep : yc + sep;
+      if(!isDup) drawOooArrows(ctx, col, y, color);   // arrows under the dots
+      ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 5;
+      var hits = [];
+      for(var c=0; c<col.cols; c++){
+        if(!arr[c]) continue;
+        ctx.beginPath(); ctx.arc(c+0.5, y, 2.2, 0, 6.2832); ctx.fill();
+        hits.push(c);
+      }
+      // counts over the dots (dup above, ooo below) — only when every adjacent
+      // pair clears the widest label, so dense clusters never overprint
+      if(hits.length){
+        ctx.shadowBlur = 0;
+        ctx.font = '9px ui-monospace,monospace'; ctx.textAlign = "center";
+        ctx.textBaseline = isDup ? "bottom" : "top";
+        var maxW = 0, hi;
+        for(hi = 0; hi < hits.length; hi++){ var lw = ctx.measureText(fmtInt(arr[hits[hi]])).width; if(lw > maxW) maxW = lw; }
+        var need = maxW + 4, fits = true;
+        for(hi = 1; hi < hits.length; hi++){ if(hits[hi] - hits[hi-1] < need){ fits = false; break; } }
+        if(fits){
+          ctx.fillStyle = color;
+          var ly = isDup ? y - 4 : y + 4;
+          for(hi = 0; hi < hits.length; hi++) ctx.fillText(fmtInt(arr[hits[hi]]), hits[hi] + 0.5, ly);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
   // current bipolar anomaly view: baseline + up(missing)/down(too-close) spikes
   function drawAnomBipolar(ctx, w, h, t0, t1, span, col, threshold, baseY){
     var topY = 14, bottomY = h - 12;
@@ -2004,6 +2153,10 @@ time
     // (gap.start + k·Δt); height + colour reflect the parent gap's severity.
     // When the expected spacing falls under ~2px the messages can't be resolved
     // individually, so fall back to one spike per pixel column for that burst.
+    // a pontual stream has no cadence, so no "missing" concept — its big sporadic
+    // gaps must not be drawn as dropouts (the collapsed path below keys off
+    // col.maxGap, which would otherwise spike on every wide gap)
+    var pontual = stats && stats.type === "pontual";
     var maxMiss = 1, gi2, gv2;
     var gr = visibleGapRange(t0, t1);   // only the dropouts on screen
     for(gi2=gr.lo; gi2<gr.hi; gi2++){
@@ -2014,7 +2167,9 @@ time
     var missHeight = function(m){ var hh = (Math.log10(m+1)/denom)*upSpan; return hh < 6 ? 6 : hh; };
 
     ctx.save();
-    if(ghostPx >= 2){
+    if(pontual){
+      /* no dropouts to draw */
+    } else if(ghostPx >= 2){
       for(gi2=gr.lo; gi2<gr.hi; gi2++){
         gv2 = gapEvents[gi2];
         var c1 = spikeColor(gv2.missing), hgt1 = missHeight(gv2.missing);
@@ -2051,6 +2206,8 @@ time
       ctx.beginPath(); ctx.moveTo(c3+0.5, baseY); ctx.lineTo(c3+0.5, baseY + dh); ctx.stroke();
     }
     ctx.restore();
+    // duplicate / out-of-order point events straddling the baseline
+    drawDupOoo(ctx, col, baseY, 7);
     ctx.lineWidth = 1; ctx.textAlign = "start";
   }
 
@@ -2129,6 +2286,8 @@ time
       if(!(col.minGap[c] < closeNs)) continue;
       ctx.beginPath(); ctx.moveTo(c+0.5, top); ctx.lineTo(c+0.5, bot); ctx.stroke();
     }
+    // duplicate / out-of-order point events, centred on the plot
+    drawDupOoo(ctx, col, (top+bot)/2, 7);
   }
 
   // every sample timestamp as a vertical line, drawn alongside the error marks
@@ -2189,6 +2348,12 @@ time
         ctx.fillStyle = "rgb(52,224,196)";   // continuous (phosphor)
       }
       ctx.fillRect(c, 0, 1.5, h);
+    }
+    // duplicate / out-of-order point events: a cyan cap on the top edge and a
+    // magenta cap on the bottom edge of the affected slices, over the coverage
+    if(col.dup && col.ooo) for(var cc=0;cc<col.cols;cc++){
+      if(col.dup[cc]){ ctx.fillStyle = "#3bd6e0"; ctx.fillRect(cc, 0, 1.5, 3.5); }
+      if(col.ooo[cc]){ ctx.fillStyle = "#ff6fd0"; ctx.fillRect(cc, h-3.5, 1.5, 3.5); }
     }
     // viewport indicator
     var x0 = (viewStart/full)*w, x1 = (viewEnd/full)*w;
@@ -2324,7 +2489,7 @@ time
       cards.push(["Drop events", fmtInt(stats.events), "", stats.events>0?"bad":"good"]);
       if(burst && stats.silences) cards.push(["Bursts", fmtInt(stats.runs), stats.silences+" silence"+(stats.silences===1?"":"s"), ""]);
     }
-    cards.push(["Too close", fmtInt(stats.tight), stats.tight>0 ? "min "+fmtGap(stats.tightest) : "", stats.tight>0?"tight":"good"]);
+    if(!pontual) cards.push(["Too close", fmtInt(stats.tight), stats.tight>0 ? "min "+fmtGap(stats.tightest) : "", stats.tight>0?"tight":"good"]);
     cards.push(["Mean rate", stats.rate.toFixed(1), "Hz", ""]);
     sg.innerHTML = cards.map(function(c){
       return '<div class="stat"><div class="k">'+c[0]+'</div><div class="v '+(c[3]||"")+'">'+
@@ -2337,10 +2502,8 @@ time
     var hasTight = stats.tight > 0;
     if(pontual){
       v.className = "verdict clean";
-      vt.textContent = hasTight ? fmtInt(stats.tight)+" arrival"+(stats.tight===1?"":"s")+" under "+fmtGap(closeNs)
-                                : "Sporadic stream";
-      vd.textContent = "Arrivals are pontual (no regular cadence), so missing-message analysis doesn't apply. Typical gap "+fmtGap(intervalNs)+"."
-        + (hasTight ? " Tightest "+fmtGap(stats.tightest)+"." : "");
+      vt.textContent = "Sporadic stream";
+      vd.textContent = "Arrivals are pontual (no regular cadence), so missing-message and too-close analysis don't apply. Typical gap "+fmtGap(intervalNs)+".";
     } else if(!hasDrops && !hasTight){
       v.className = "verdict clean";
       vt.textContent = burst ? "Burst stream — no anomalies within bursts" : "No timing anomalies";
@@ -2363,7 +2526,18 @@ time
 
     // anomaly note
     var extras = [];
-    if(malformed) extras.push(fmtInt(malformed)+" unparseable line"+(malformed===1?"":"s")+" skipped");
+    if(malformed){
+      var mNote = fmtInt(malformed)+" unparseable line"+(malformed===1?"":"s")+" skipped";
+      if(malformedFiles.length === 1){
+        var f0 = malformedFiles[0];
+        mNote += " in " + f0.name + (f0.firstLine ? " (first at line "+fmtInt(f0.firstLine)+")" : "");
+      } else if(malformedFiles.length > 1){
+        mNote += " in " + malformedFiles.map(function(f){
+          return f.name+" ("+fmtInt(f.count)+(f.firstLine ? ", line "+fmtInt(f.firstLine) : "")+")";
+        }).join(", ");
+      }
+      extras.push(mNote);
+    }
     if(outOfOrder) extras.push(fmtInt(outOfOrder)+" out-of-order timestamp"+(outOfOrder===1?"":"s"));
     if(duplicates) extras.push(fmtInt(duplicates)+" duplicate timestamp"+(duplicates===1?"":"s"));
     if(extras.length){ note.style.display="block"; note.textContent = extras.join("  ·  "); }
@@ -2480,6 +2654,7 @@ time
       var ci = Math.max(0, Math.min(cols-1, Math.round(x)));
       var frac = x / (traceData.w || 1); if(frac < 0) frac = 0; if(frac > 1) frac = 1;
       var off = col.t0 + frac*col.span;
+      var pontual = stats && stats.type === "pontual";   // no cadence → no "missing" concept
       var html = '<span class="lab">t</span> '+(off/1e9).toFixed(4)+' s &nbsp; '+clockInline(off);
 
       // raw channel values at the nearest sample
@@ -2508,7 +2683,7 @@ time
           arrows.push({ left:{t:lt}, right:{t:rt}, rgb:"122,170,224" });
           // inside a dropout: name the estimated missing timestamp under the cursor
           var gg = rt - lt;
-          if(gg > traceData.threshold){
+          if(!pontual && gg > traceData.threshold){
             var totMiss = Math.max(1, Math.round(gg/intervalNs)-1);
             var kk = Math.max(1, Math.min(totMiss, Math.round((off - lt)/intervalNs)));
             var et = lt + kk*intervalNs;
@@ -2523,14 +2698,17 @@ time
       }
 
       if(showAnom){
-        var bestGap = 0, tightGap = Infinity;
+        var bestGap = 0, tightGap = Infinity, nDup = 0, nOoo = 0;
         for(var dd=-3; dd<=3; dd++){
           var k = ci+dd; if(k<0||k>=cols) continue;
           if(col.maxGap[k] > bestGap) bestGap = col.maxGap[k];
           if(col.minGap[k] < tightGap) tightGap = col.minGap[k];
+          if(col.dup) nDup += col.dup[k];
+          if(col.ooo) nOoo += col.ooo[k];
         }
         var flagged = false;
-        if(bestGap > traceData.threshold){
+        // a pontual stream has no cadence, so wide gaps aren't "missing" — skip
+        if(!pontual && bestGap > traceData.threshold){
           var miss = Math.max(1, Math.round(bestGap/intervalNs)-1);
           html += '<br><span class="hi">gap '+fmtGap(bestGap)+' · '+miss+' missing</span>';
           flagged = true;
@@ -2539,7 +2717,17 @@ time
           html += '<br><span class="tight">spacing '+fmtGap(tightGap)+' · too close</span>';
           flagged = true;
         }
-        if(!flagged && !traceData.raw) html += '<br><span class="ok">continuous</span>';
+        if(nDup){
+          html += '<br><span class="dup">'+fmtInt(nDup)+' duplicate timestamp'+(nDup===1?"":"s")+'</span>'
+                + ' <span class="lab">— same time as the prior sample</span>';
+          flagged = true;
+        }
+        if(nOoo){
+          html += '<br><span class="ooo">'+fmtInt(nOoo)+' out-of-order timestamp'+(nOoo===1?"":"s")+'</span>'
+                + ' <span class="lab">— arrived before the prior sample</span>';
+          flagged = true;
+        }
+        if(!flagged && !traceData.raw) html += '<br><span class="ok">'+(pontual ? "sporadic" : "continuous")+'</span>';
 
         // Δt between the events bracketing the cursor (+ draw the arrow)
         if(eventTimes.length){
@@ -2622,16 +2810,25 @@ time
       var ci = Math.max(0, Math.min(cols-1, Math.round(x)));
       var present = col.present[ci];
       var exp = heatData.expPerCol;
-      var miss = Math.max(0, Math.round(exp - present));
       var t0 = (ci/cols)*heatData.full, t1 = ((ci+1)/cols)*heatData.full;
-      // worst single dropout in this slice (drives the slice colour)
-      var worst = col.maxGap[ci], threshold = intervalNs * tolerance;
-      var worstStr = worst > threshold
-        ? '<br><span class="hi">worst gap '+fmtGap(worst)+' · '+fmtInt(Math.max(1, Math.round(worst/intervalNs)-1))+' missing</span>'
-        : '';
-      heatRO.innerHTML = '<span class="lab">slice</span> '+(t0/1e9).toFixed(3)+'–'+(t1/1e9).toFixed(3)+' s'+
-        '<br>'+fmtInt(present)+' / '+fmtInt(exp)+' samples'+(miss>0?' &nbsp;<span class="hi">−'+fmtInt(miss)+'</span>':' &nbsp;<span class="ok">ok</span>')+
-        worstStr;
+      var nDup = col.dup ? col.dup[ci] : 0, nOoo = col.ooo ? col.ooo[ci] : 0;
+      var dupStr = nDup ? '<br><span class="dup">'+fmtInt(nDup)+' duplicate timestamp'+(nDup===1?"":"s")+'</span>' : '';
+      var oooStr = nOoo ? '<br><span class="ooo">'+fmtInt(nOoo)+' out-of-order timestamp'+(nOoo===1?"":"s")+'</span>' : '';
+      // pontual streams have no cadence → no expected count, no "missing"; just
+      // report the sample count and any duplicate/out-of-order in the slice
+      if(stats && stats.type === "pontual"){
+        heatRO.innerHTML = '<span class="lab">slice</span> '+(t0/1e9).toFixed(3)+'–'+(t1/1e9).toFixed(3)+' s'+
+          '<br>'+fmtInt(present)+' sample'+(present===1?"":"s")+' <span class="lab">(sporadic)</span>' + dupStr + oooStr;
+      } else {
+        var miss = Math.max(0, Math.round(exp - present));
+        var worst = col.maxGap[ci], threshold = intervalNs * tolerance;
+        var worstStr = worst > threshold
+          ? '<br><span class="hi">worst gap '+fmtGap(worst)+' · '+fmtInt(Math.max(1, Math.round(worst/intervalNs)-1))+' missing</span>'
+          : '';
+        heatRO.innerHTML = '<span class="lab">slice</span> '+(t0/1e9).toFixed(3)+'–'+(t1/1e9).toFixed(3)+' s'+
+          '<br>'+fmtInt(present)+' / '+fmtInt(exp)+' samples'+(miss>0?' &nbsp;<span class="hi">−'+fmtInt(miss)+'</span>':' &nbsp;<span class="ok">ok</span>')+
+          worstStr + dupStr + oooStr;
+      }
       heatRO.style.left = x + "px";
       heatRO.style.top = "8px";
       heatRO.style.opacity = 1;
@@ -3221,6 +3418,34 @@ time
 
   // (Re)build one device card: identity line, file inventory, and a stream
   // table whose stats cells fill in as the background scan completes.
+  // colour each problem kind to match the trace's anomaly palette
+  var PROB_COLORS = { miss:"var(--drop)", tight:"var(--tight)", ooo:"var(--ooo)", dup:"var(--dup)", malformed:"var(--warn)" };
+
+  // Roll a stream's anomaly counts into one "potential problems" total plus a
+  // structured breakdown ({kind,text,where}) for the hover popup. Pontual streams
+  // have no cadence, so missing/dropout and too-close don't apply (both 0);
+  // out-of-order, duplicate and unparseable lines apply to every stream.
+  function streamProblems(st){
+    var hasMiss = st.type !== "pontual";
+    var miss = hasMiss ? (st.missing || 0) : 0;
+    var items = [];
+    if(miss) items.push({ kind:"miss", text: fmtInt(miss) + " missing message" + (miss === 1 ? "" : "s")
+      + (st.drops ? " across " + fmtInt(st.drops) + " dropout" + (st.drops === 1 ? "" : "s") : "") });
+    if(st.tight)      items.push({ kind:"tight", text: fmtInt(st.tight) + " too-close arrival" + (st.tight === 1 ? "" : "s") });
+    if(st.outOfOrder) items.push({ kind:"ooo", text: fmtInt(st.outOfOrder) + " out-of-order timestamp" + (st.outOfOrder === 1 ? "" : "s") });
+    if(st.duplicates) items.push({ kind:"dup", text: fmtInt(st.duplicates) + " duplicate timestamp" + (st.duplicates === 1 ? "" : "s") });
+    if(st.malformed){
+      var where = (st.malformedFiles && st.malformedFiles.length)
+        ? st.malformedFiles.map(function(f){
+            return f.name + " (" + fmtInt(f.count) + (f.firstLine ? ", line " + fmtInt(f.firstLine) : "") + ")";
+          }).join(", ")
+        : "";
+      items.push({ kind:"malformed", text: fmtInt(st.malformed) + " unparseable line" + (st.malformed === 1 ? "" : "s") + " skipped", where: where });
+    }
+    var total = miss + (st.tight || 0) + (st.outOfOrder || 0) + (st.duplicates || 0) + (st.malformed || 0);
+    return { total: total, items: items };
+  }
+
   function fillDevCard(dev){
     var h = '<div class="devtop"><span class="devname">' + esc(dev.name) + '</span>';
     h += dev.schema
@@ -3234,7 +3459,7 @@ time
     bits.push((dev.bytes/1048576).toFixed(1) + " MB");
     h += '<div class="devinfo">' + esc(bits.join(" · ")) + '</div>';
     if(dev.streams.length){
-      h += '<table><thead><tr><th>stream</th><th>type</th><th class="r">msgs</th><th class="r">Δt</th><th class="r">missing</th></tr></thead><tbody>';
+      h += '<table><thead><tr><th>stream</th><th>type</th><th class="r">msgs</th><th class="r">Δt</th><th class="r warnh" title="Potential problems — missing, too-close, out-of-order, duplicate &amp; unparseable. Hover a count for details.">⚠</th></tr></thead><tbody>';
       dev.streams.forEach(function(s, i){
         var st = s.stats;
         var names = streamChannelNames(s, dev.schema), isArr = names.length > 1;
@@ -3254,15 +3479,27 @@ time
         if(st){
           var typeCell = '<td><span class="stype ' + st.type + '" title="' + st.type + '">'
             + st.type.charAt(0).toUpperCase() + '</span></td>';
-          // pontual streams have no missing concept; burst counts only within bursts
-          var missCell = (st.type === "pontual")
-            ? '<td class="r" title="sporadic stream — missing not applicable">—</td>'
-            : '<td class="r ' + (st.missing ? "drops" : "ok") + '">' + st.missing.toLocaleString()
-              + (st.drops ? ' (' + st.drops + '×)' : '') + '</td>';
+          // one warning cell totalling every anomaly; non-zero counts carry the
+          // structured breakdown in data-prob, shown by the hover popup. Red when
+          // there's actual data loss (missing), amber for quality-only issues.
+          var prob = streamProblems(st);
+          var warnCell;
+          if(prob.total === 0){
+            warnCell = '<td class="r ok" title="no problems found">0</td>';
+          } else {
+            var probAttr = esc(encodeURIComponent(JSON.stringify(prob.items)));
+            var lossy = st.type !== "pontual" && st.missing;
+            warnCell = '<td class="r ' + (lossy ? "drops" : "warncell") + '" data-prob="' + probAttr + '">⚠ '
+              + prob.total.toLocaleString() + '</td>';
+          }
+          // Δt is a cadence; a pontual stream has none, so show no interval for it
+          var dtCell = (st.type !== "pontual" && st.dtNs > 0)
+            ? '<td class="r">' + fmtGap(st.dtNs) + '</td>'
+            : '<td class="r" title="' + (st.type === "pontual" ? "sporadic stream — no regular cadence" : "no interval") + '">—</td>';
           h += typeCell
              + '<td class="r">' + st.count.toLocaleString() + '</td>'
-             + '<td class="r">' + (st.dtNs > 0 ? fmtGap(st.dtNs) : "—") + '</td>'
-             + missCell;
+             + dtCell
+             + warnCell;
         } else h += '<td>…</td><td class="r">…</td><td class="r">…</td><td class="r">…</td>';
         h += '</tr>';
         // array register: one value-line per position (collapsed by default;
@@ -3286,6 +3523,7 @@ time
   // stream to show; -1 (or out of range) falls back to the largest by bytes.
   function openDevice(dev, idx){
     pauseScan();
+    hideProbPopup();           // the card grid is about to be hidden
     currentDevice = dev;
     harpSchema = dev.schema || null;
     streamList = dev.streams;
@@ -3711,6 +3949,11 @@ time
     var CAP = 65536;
     var count = 0, prev = null, buf = [], dtNs = 0, settled = false;
     var drops = 0, missing = 0, sdrops = 0, smiss = 0;
+    // timestamp-quality tallies, mirroring the full analyzer's anomaly note: a
+    // backwards step (g<0), a repeated stamp (g===0), a spacing under the close
+    // floor (closeFactor×Δt), and lines the walker couldn't parse.
+    var outOfOrder = 0, duplicates = 0, tight = 0, malformed = 0, closeFloor = 0;
+    var curFile = null, mfMap = {}, mfOrder = [];   // per-file malformed tally
     var regular = false, silenceNs = Infinity;
     function judge(g){
       if(dtNs > 0 && g > dtNs * tolerance){
@@ -3718,10 +3961,12 @@ time
         drops++; missing += m;
         if(isFinite(silenceNs) && g >= silenceNs){ sdrops++; smiss += m; }
       }
+      if(closeFloor > 0 && g > 0 && g < closeFloor) tight++;   // strictly positive: a 0-gap is a duplicate, not too-close
     }
     function settle(){
       settled = true;
       dtNs = buf.length ? detectInterval(buf) : 0;
+      closeFloor = closeFactor * dtNs;
       var r = streamRegularity(buf, dtNs, tolerance);   // cadence + silence band from the buffer
       regular = r.regular; silenceNs = r.silenceNs;
       for(var i=0; i<buf.length; i++) judge(buf[i]);
@@ -3731,11 +3976,21 @@ time
       count++;
       if(prev !== null){
         var g = Number(tsNs - prev);
+        if(g < 0) outOfOrder++;
+        else if(g === 0) duplicates++;
         if(settled) judge(g);
         else { buf.push(g); if(buf.length >= CAP) settle(); }
       }
       prev = tsNs;
     }
+    function bad(line){              // an unparseable line, reported by the walker
+      malformed++;
+      if(curFile){
+        if(mfMap[curFile] === undefined){ mfMap[curFile] = { count: 0, firstLine: line || 0 }; mfOrder.push(curFile); }
+        mfMap[curFile].count++;
+      }
+    }
+    function file(name){ curFile = name; }   // scanStream marks each file boundary
     function done(){
       if(!settled) settle();
       var type, mOut, dOut;
@@ -3746,12 +4001,17 @@ time
         if(type === "burst"){ mOut = missing - smiss; dOut = drops - sdrops; }   // exclude silences
         else { mOut = missing; dOut = drops; }
       }
+      // too-close needs a cadence to compare against; pontual streams have none,
+      // so the count is meaningless there and is dropped
+      var tOut = (type === "pontual") ? 0 : tight;
       // silenceNs (the inter-burst gap floor) lets the combined chart break the
       // line across bursts instead of connecting them; only meaningful for burst
       return { count: count, dtNs: dtNs, drops: dOut, missing: mOut, type: type,
+               outOfOrder: outOfOrder, duplicates: duplicates, tight: tOut, malformed: malformed,
+               malformedFiles: mfOrder.map(function(n){ return { name: n, count: mfMap[n].count, firstLine: mfMap[n].firstLine }; }),
                silenceNs: (type === "burst" && isFinite(silenceNs)) ? silenceNs : null };
     }
-    return { add: add, done: done };
+    return { add: add, bad: bad, file: file, done: done };
   }
 
   // Timestamp-only Harp walker (stride from the first message, like the full
@@ -3779,15 +4039,20 @@ time
 
   // Timestamp-only CSV line feeder (first field of each row).
   function makeCsvStatsWalker(acc){
+    var started = false, lineNo = 0, atFileStart = true;   // a leading unparseable line is a header, not malformed
+    function file(){ lineNo = 0; atFileStart = true; }     // reset line counter + header guard per file
     function feed(line){
+      lineNo++;                        // count every physical line so error positions match an editor
       if(!line) return;
       var c = line.indexOf(",");
       var field = (c === -1 ? line : line.slice(0, c)).trim();
       if(!field) return;
       var ts = parseTsNs(field);
-      if(ts !== null) acc.add(ts);
+      if(ts !== null){ started = true; atFileStart = false; acc.add(ts); }
+      else if(!started || atFileStart){ atFileStart = false; }   // header row (first or later chunk) — skip
+      else acc.bad(lineNo);            // unparseable after data began → malformed
     }
-    return { feed: feed };
+    return { feed: feed, file: file };
   }
 
   // Read one stream chunk by chunk through its stats walker. Between chunks the
@@ -3809,6 +4074,8 @@ time
       function nextFile(){
         if(fi >= files.length){ resolve(acc.done()); return; }
         var file = files[fi++];
+        acc.file(file.name);          // attribute this file's unparseable lines
+        if(!binary) walker.file();    // restart CSV line numbering for this file
         var pos = 0, total = file.size || 0;
         var carry = new Uint8Array(0), tail = "";
         var decoder = binary ? null : new TextDecoder("utf-8");
@@ -3854,7 +4121,8 @@ time
     var ep = scanState.epoch, task = scanState.queue[scanState.idx];
     scanStream(task.stream, ep).then(function(res){
       if(!scanState || scanState.epoch !== ep) return;
-      task.stream.stats = res || { count: 0, dtNs: 0, drops: 0, missing: 0, type: "pontual" };
+      task.stream.stats = res || { count: 0, dtNs: 0, drops: 0, missing: 0, type: "pontual",
+                                   outOfOrder: 0, duplicates: 0, tight: 0, malformed: 0, malformedFiles: [] };
       if(task.dev._card) fillDevCard(task.dev);
       scanState.idx++;
       pumpScan();
@@ -4114,6 +4382,42 @@ time
     buildChannelLegend();
     drawTrace();
   });
+
+  // ---------- device-card potential-problems popup ----------
+  // A cursor-following card (same look as the chart hover readout) that renders
+  // the structured breakdown stashed on each warning cell's data-prob attribute.
+  var probRO = $("prob-ro");
+  function showProbPopup(cell, clientX, clientY){
+    var raw = cell.getAttribute("data-prob");
+    var items; try { items = JSON.parse(decodeURIComponent(raw)); } catch(e){ return; }
+    if(!items || !items.length){ hideProbPopup(); return; }
+    var html = '<div class="ptitle">Potential problems</div>';
+    items.forEach(function(it){
+      var color = PROB_COLORS[it.kind] || "var(--text)";
+      html += '<div class="prow"><span class="dot" style="background:' + color + '"></span>'
+            + '<span class="ptxt">' + esc(it.text)
+            + (it.where ? '<span class="pwhere"> in ' + esc(it.where) + '</span>' : '')
+            + '</span></div>';
+    });
+    probRO.innerHTML = html;
+    probRO.style.left = clientX + "px";
+    probRO.style.top = clientY + "px";
+    probRO.style.opacity = 1;
+  }
+  function hideProbPopup(){ probRO.style.opacity = 0; }
+  (function(){
+    var dg = $("devgrid");
+    dg.addEventListener("mouseover", function(e){
+      var cell = e.target.closest && e.target.closest("td[data-prob]");
+      if(cell) showProbPopup(cell, e.clientX, e.clientY);
+    });
+    dg.addEventListener("mousemove", function(e){
+      var cell = e.target.closest && e.target.closest("td[data-prob]");
+      if(cell){ probRO.style.left = e.clientX + "px"; probRO.style.top = e.clientY + "px"; }
+      else hideProbPopup();
+    });
+    dg.addEventListener("mouseleave", hideProbPopup);
+  })();
 
   // redraw on resize
   var rt;
