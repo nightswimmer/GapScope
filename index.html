@@ -346,8 +346,16 @@
   .vidtime{color:var(--phosphor);font-size:12px;margin-left:auto;font-variant-numeric:tabular-nums;letter-spacing:.02em}
   .vidwrap{position:relative;border:1px solid var(--line);border-radius:10px;background:#000;overflow:hidden;
     text-align:center;min-height:60px}
-  #vid-canvas,#chart-vid{display:inline-block;width:auto;max-width:100%;max-height:62vh;cursor:default;vertical-align:middle}
+  #vid-canvas{display:inline-block;width:auto;max-width:100%;max-height:62vh;cursor:default;vertical-align:middle}
   .vidnote{color:var(--text-dim);font-size:12px;padding:18px;text-align:center}
+  /* Visualizer multi-camera grid: one colour-keyed panel per selected camera */
+  .vidgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-bottom:8px}
+  .vidpanel{border:1px solid var(--line);border-top:2px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
+  .vidcap{font-size:11px;padding:4px 8px;background:var(--panel);font-variant-numeric:tabular-nums;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .vidcap .cl{color:var(--text-dim)}
+  .vidpanel .vidwrap{border:none;border-radius:0;min-height:80px}
+  .vidpanel canvas{display:block;width:100%;height:auto;max-height:42vh;object-fit:contain;background:#000}
 </style>
 </head>
 <body>
@@ -457,10 +465,7 @@ time
         <span class="hint">scroll to zoom · drag to pan · double-click to reset</span>
       </div>
     </div>
-    <div class="vidwrap" id="chart-vidwrap" style="display:none">
-      <canvas id="chart-vid" width="640" height="360"></canvas>
-      <div class="vidnote" id="chart-vid-note" style="display:none"></div>
-    </div>
+    <div class="vidgrid" id="chart-vidgrid" style="display:none"></div>
     <div class="legend" id="chart-legend"></div>
     <div class="canvas-wrap" id="chart-wrap">
       <canvas id="chart"></canvas>
@@ -2098,6 +2103,9 @@ time
     $("t-mid").textContent = fmtElapsedNs(t0+span/2, tStep);
     $("t-end").textContent = fmtElapsedNs(t1, tStep)+"  ·  "+clockInline(t1);
 
+    // mark where the camera video actually has frames (track + dimmed gaps)
+    vidDrawCoverage(ctx, "trace", function(o){ return ((o - t0)/span)*w; }, t0, t1, 0, w, 0, h);
+
     traceData = { col: col, w: w, baseY: baseY, topY: 14, threshold: threshold, raw: rawOn };
   }
 
@@ -3617,15 +3625,18 @@ time
   // exact across dropped frames and clip boundaries. AVI carries H.264 in Annex-B
   // with in-band SPS/PPS; the browser's VideoDecoder does the decoding.
   var VID_MARGIN = 8;        // frames decoded past a paused target so held B-frames flush out
+  var VID_GAP_TOL = 1e9;     // ns: gaps below this (e.g. the ~25 ms clip seams) aren't "no footage"
+  var VID_COLORS = ["#4aa8ff", "#e0b020", "#39d0a8", "#e0604a", "#b07ff0", "#f08ad0", "#90d050", "#c0c8d0"];
   var vidMode = "trace";     // "trace" → device analysis view; "chart" → the visualizer
-  var vidDev = null, vidClips = null, vidActiveIdx = -1, vidActive = false, vidEpoch = 0;
+  // Each camera is its own VidPlayer (decoder + clip set + target canvas). The trace
+  // shows exactly one; the Visualizer shows 1..N side by side. A single shared clock
+  // (vidPosOff/vidPlaying/vidSpeed) and one playhead drive every player together.
+  var vidPlayers = [], vidActive = false, vidEpoch = 0;
   var vidPlaying = false, vidPosOff = 0, vidPlayPerf = 0, vidPlayStartOff = 0, vidSpeed = 1;
-  // a seek holds the playhead at its target until that frame is actually decoded
-  // and shown (then resumes), so the decoder never chases a moving target
-  var vidSeekHold = false, vidShownPidx = -1, vidForceReseek = false, vidNeedSeekDecode = false;
-  var vidDecoder = null, vidDisplay = [], vidOutCount = 0, vidSessionBase = -1;
-  var vidFeedIdx = 0, vidFeedLimit = 0, vidPumping = false, vidFeeding = false, vidFlushed = false;
-  var vidPhReq = 0, vidLoadingClip = false;
+  // a seek holds the playhead at its target until EVERY player's frame is shown
+  // (then resumes), so no decoder chases a moving target
+  var vidSeekHold = false;
+  var vidPhReq = 0;
   var vidHasCodec = (typeof window !== "undefined" && typeof window.VideoDecoder !== "undefined");
 
   // The origin offsets are measured from. The Visualizer anchors its value lines
@@ -3795,12 +3806,6 @@ time
   }
 
   function vidUsableN(clip){ return Math.min(clip.idx.length, clip.frameOff ? clip.frameOff.length : 0); }
-  function vidClipIndexForOff(off){
-    if(!vidClips || !vidClips.length) return -1;
-    var idx = 0;
-    for(var i = 0; i < vidClips.length; i++){ if(vidClips[i].startOff <= off) idx = i; else break; }
-    return idx;
-  }
   function vidFrameForOff(clip, off){
     var fo = clip.frameOff, n = vidUsableN(clip);
     if(n <= 0) return 0;
@@ -3816,100 +3821,179 @@ time
     return i;
   }
 
-  // ---- decode pipeline (presentation-order display; clip-local frame indices) ----
-  function vidDestroyDecoder(){
-    vidFeeding = false;
-    vidDisplay.forEach(function(d){ try{ d.frame.close(); }catch(e){} });
-    vidDisplay = [];
-    if(vidDecoder){ try{ vidDecoder.close(); }catch(e){} vidDecoder = null; }
-    vidSessionBase = -1;
-  }
-  function vidNewDecoder(clip){
-    vidDestroyDecoder();
-    vidOutCount = 0; vidFlushed = false; vidShownPidx = -1; vidForceReseek = false;
-    var dec = new VideoDecoder({
-      output: function(frame){ vidDisplay.push({ pidx: vidOutCount++, frame: frame }); },
-      // an error wedges this decoder — drop it so the next tick rebuilds the session
-      error: function(){ if(vidDecoder === dec) vidForceReseek = true; }
-    });
-    vidDecoder = dec;
-    try{ dec.configure({ codec: clip.codec, optimizeForLatency: true, hardwareAcceleration: "no-preference" }); }
-    catch(e){ vidShowNote("Cannot decode this video (" + clip.codec + "): " + e.message); if(vidDecoder === dec){ try{ dec.close(); }catch(_){} vidDecoder = null; } }
-  }
-  function vidPump(clip){
-    if(vidPumping || !vidDecoder || !vidFeeding) return;
-    vidPumping = true;
-    var myDec = vidDecoder, ep = vidEpoch, N = vidUsableN(clip);
-    function more(){
-      return vidFeeding && !vidFlushed && vidDecoder === myDec && ep === vidEpoch &&
-             vidFeedIdx <= vidFeedLimit && vidFeedIdx < N &&
-             myDec.decodeQueueSize < 20 && vidDisplay.length < 32;
-    }
-    function loop(){
-      if(!more()){
-        // flush to drain frames the decoder holds for reordering when the feed range
-        // is exhausted: at the end of the clip, or after a PAUSED seek (so the target
-        // frame actually emits instead of being held until the next feed). A flush
-        // requires a keyframe before the next decode — fine, vidPlay/vidSeekOff reseek.
-        var rangeDone = vidFeedIdx > vidFeedLimit || vidFeedIdx >= N;
-        if(vidDecoder === myDec && ep === vidEpoch && !vidFlushed && rangeDone && (vidFeedIdx >= N || vidSeekHold)){
-          vidFlushed = true; myDec.flush().catch(function(){});
-        }
-        vidPumping = false; return;
+  // ---- per-camera player (one decoder + clip set + target canvas) ----
+  // All the decode/seek/flush state that used to be module-global now lives on a
+  // player instance, so N cameras can decode independently while sharing the one
+  // clock. The intricate seek logic is unchanged — just `p.`-scoped. Presentation
+  // order display; clip-local frame indices.
+  function makeVidPlayer(dev, idx){
+    var p = {
+      dev: dev, name: dev.name, color: VID_COLORS[idx % VID_COLORS.length],
+      clips: null, activeIdx: -1, loadingClip: false,
+      decoder: null, display: [], outCount: 0, sessionBase: -1,
+      feedIdx: 0, feedLimit: 0, pumping: false, feeding: false, flushed: false,
+      shownPidx: -1, forceReseek: false, needSeekDecode: false,
+      settled: true, inGap: false, ready: false,
+      canvas: null, note: null, capEl: null   // DOM targets (set when the panel is built)
+    };
+    p.clipIndexForOff = function(off){
+      if(!p.clips || !p.clips.length) return -1;
+      var i = 0; for(var k = 0; k < p.clips.length; k++){ if(p.clips[k].startOff <= off) i = k; else break; }
+      return i;
+    };
+    // is `off` actually within footage? returns {gap:true} when in the lead-in,
+    // the tail, or a between-clip gap wider than VID_GAP_TOL (so the ~25 ms seams
+    // don't register as gaps); otherwise {gap:false, ci}.
+    p.locate = function(off){
+      var cl = p.clips, n = cl.length;
+      if(off < cl[0].startOff - VID_GAP_TOL || off > cl[n-1].endOff + VID_GAP_TOL) return { gap: true };
+      var ci = p.clipIndexForOff(off);
+      if(off <= cl[ci].endOff + VID_GAP_TOL) return { gap: false, ci: ci };
+      return { gap: true };   // past clip ci's end, before the next clip's start
+    };
+    p.destroyDecoder = function(){
+      p.feeding = false;
+      p.display.forEach(function(d){ try{ d.frame.close(); }catch(e){} });
+      p.display = [];
+      if(p.decoder){ try{ p.decoder.close(); }catch(e){} p.decoder = null; }
+      p.sessionBase = -1;
+    };
+    p.newDecoder = function(clip){
+      p.destroyDecoder();
+      p.outCount = 0; p.flushed = false; p.shownPidx = -1; p.forceReseek = false;
+      var dec = new VideoDecoder({
+        output: function(frame){ p.display.push({ pidx: p.outCount++, frame: frame }); },
+        // an error wedges this decoder — drop it so the next tick rebuilds the session
+        error: function(){ if(p.decoder === dec) p.forceReseek = true; }
+      });
+      p.decoder = dec;
+      // prefer hardware decode (large frames; many cameras at once), software fallback
+      try{ dec.configure({ codec: clip.codec, optimizeForLatency: true, hardwareAcceleration: "prefer-hardware" }); }
+      catch(e){
+        try{ dec.configure({ codec: clip.codec, optimizeForLatency: true, hardwareAcceleration: "no-preference" }); }
+        catch(e2){ p.showNote("Cannot decode " + clip.codec + ": " + e2.message); if(p.decoder === dec){ try{ dec.close(); }catch(_){} p.decoder = null; } }
       }
-      var f = clip.idx[vidFeedIdx];
-      vidReadBuf(clip.avi, f.pos, f.size).then(function(ab){
-        if(vidDecoder !== myDec || ep !== vidEpoch){ vidPumping = false; return; }
-        try{
-          myDec.decode(new EncodedVideoChunk({ type: f.key ? "key" : "delta",
-            timestamp: vidFeedIdx * (clip.dtUs || 1), duration: clip.dtUs || 1, data: new Uint8Array(ab) }));
-        }catch(e){ vidPumping = false; return; }
-        vidFeedIdx++;
-        loop();
-      }, function(){ vidPumping = false; });
-    }
-    loop();
+    };
+    p.pump = function(clip){
+      if(p.pumping || !p.decoder || !p.feeding) return;
+      p.pumping = true;
+      var myDec = p.decoder, ep = vidEpoch, N = vidUsableN(clip);
+      function more(){
+        return p.feeding && !p.flushed && p.decoder === myDec && ep === vidEpoch &&
+               p.feedIdx <= p.feedLimit && p.feedIdx < N &&
+               myDec.decodeQueueSize < 20 && p.display.length < 32;
+      }
+      function loop(){
+        if(!more()){
+          // flush to drain held reorder frames when the feed range is exhausted: at
+          // the clip end, or after a PAUSED seek (so the target frame emits instead of
+          // being held). A flush forces a keyframe before the next decode — fine,
+          // vidPlay/vidSeekOff reseek.
+          var rangeDone = p.feedIdx > p.feedLimit || p.feedIdx >= N;
+          if(p.decoder === myDec && ep === vidEpoch && !p.flushed && rangeDone && (p.feedIdx >= N || vidSeekHold)){
+            p.flushed = true; myDec.flush().catch(function(){});
+          }
+          p.pumping = false; return;
+        }
+        var f = clip.idx[p.feedIdx];
+        vidReadBuf(clip.avi, f.pos, f.size).then(function(ab){
+          if(p.decoder !== myDec || ep !== vidEpoch){ p.pumping = false; return; }
+          try{
+            myDec.decode(new EncodedVideoChunk({ type: f.key ? "key" : "delta",
+              timestamp: p.feedIdx * (clip.dtUs || 1), duration: clip.dtUs || 1, data: new Uint8Array(ab) }));
+          }catch(e){ p.pumping = false; return; }
+          p.feedIdx++;
+          loop();
+        }, function(){ p.pumping = false; });
+      }
+      loop();
+    };
+    p.seekDecode = function(clip, tf){
+      p.newDecoder(clip);
+      if(!p.decoder) return;
+      p.sessionBase = vidKeyAtOrBefore(clip, tf);
+      p.feedIdx = p.sessionBase; p.feeding = true; p.flushed = false;
+    };
+    p.driveDecode = function(clip, tf){
+      // reseek from the nearest keyframe only when the session can't continue: gone/
+      // errored, target behind the session start, or a seek requested a new start
+      // (needSeekDecode, once per seek). Otherwise feed forward. We deliberately do
+      // NOT reseek just because the decoder flushed — after a paused-seek flush the
+      // held frames must drain and draw the target (reseeking re-ran the catch-up
+      // forever). A flushed decoder simply isn't fed again (more()); the next real
+      // seek/resume reseeks via needSeekDecode / vidPlay.
+      if(!p.decoder || p.forceReseek || p.sessionBase < 0 || p.needSeekDecode || tf < p.sessionBase){
+        p.seekDecode(clip, tf);
+        p.needSeekDecode = false;
+      }
+      if(!p.decoder) return;
+      var N = vidUsableN(clip);
+      p.feedLimit = vidPlaying ? (N - 1) : Math.min(N - 1, tf + VID_MARGIN);
+      var targetPidx = tf - p.sessionBase, toDraw = null;
+      while(p.display.length && p.display[0].pidx <= targetPidx){
+        if(toDraw) try{ toDraw.frame.close(); }catch(e){}
+        toDraw = p.display.shift();
+      }
+      if(toDraw){ p.drawFrame(toDraw.frame); p.shownPidx = toDraw.pidx; try{ toDraw.frame.close(); }catch(e){} }
+      p.pump(clip);
+    };
+    p.drawFrame = function(frame){
+      var cv = p.canvas; if(!cv) return;
+      cv._blank = false;
+      if(cv.width !== frame.displayWidth){ cv.width = frame.displayWidth; cv.height = frame.displayHeight; }
+      cv.getContext("2d").drawImage(frame, 0, 0);
+    };
+    // no footage at the current time — dim the panel and say so (rather than holding
+    // a stale frame from before/after the recording)
+    p.drawGap = function(){
+      var cv = p.canvas; if(!cv || cv._blank) return;
+      cv._blank = true;
+      var ctx = cv.getContext("2d");
+      ctx.save(); ctx.fillStyle = "#05080a"; ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = "rgba(140,160,180,.6)"; ctx.font = '13px ui-monospace,monospace';
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("— no footage at this time —", cv.width/2, cv.height/2);
+      ctx.restore();
+    };
+    p.showNote = function(msg){ if(p.note){ p.note.textContent = msg || ""; p.note.style.display = msg ? "block" : "none"; } if(p.canvas) p.canvas.style.display = msg ? "none" : "inline-block"; };
+    p.activateClip = function(ci){ p.activeIdx = ci; p.destroyDecoder(); };
+    // advance this player to the shared clock position; sets p.settled (whether it's
+    // resting on the right frame / a gap, used to release the global seek hold)
+    p.drive = function(){
+      if(!p.clips || !p.clips.length){ p.settled = true; return; }
+      var loc = p.locate(vidPosOff);
+      if(loc.gap){ p.inGap = true; p.drawGap(); p.settled = true; return; }
+      p.inGap = false;
+      var ci = loc.ci;
+      if(ci !== p.activeIdx){
+        var clip = p.clips[ci];
+        // a clip that failed to demux is treated as a gap, so one bad file can't
+        // freeze the shared seek-hold (and thus every other camera) forever
+        if(clip.loadFailed){ p.drawGap(); p.settled = true; return; }
+        if(!p.loadingClip){
+          p.loadingClip = true;
+          var ep = vidEpoch;
+          Promise.all([vidDemuxHeader(clip), vidLoadFrameOffsets(clip)]).then(function(){
+            p.loadingClip = false; if(ep === vidEpoch) p.activateClip(ci);
+          }, function(){ p.loadingClip = false; clip.loadFailed = true; });
+        }
+        p.settled = false; return;
+      }
+      var c = p.clips[ci];
+      if(!c.headerReady || !c.framesReady){ p.settled = false; return; }
+      var tf = vidFrameForOff(c, vidPosOff);
+      // when paused with the right frame already shown, stay idle — don't keep
+      // rebuilding the (flushed) decoder every frame
+      var idle = !vidPlaying && !vidSeekHold && !p.forceReseek && p.decoder &&
+                 p.sessionBase >= 0 && p.shownPidx >= (tf - p.sessionBase);
+      if(idle){ p.settled = true; return; }
+      p.driveDecode(c, tf);
+      p.settled = (p.shownPidx >= tf - p.sessionBase);
+    };
+    p.markSeek = function(){ p.needSeekDecode = true; p.shownPidx = -1; p.settled = false; };
+    p.bounds = function(){ return { lo: p.clips[0].startOff, hi: p.clips[p.clips.length-1].endOff }; };
+    return p;
   }
-  function vidSeekDecode(clip, tf){
-    vidNewDecoder(clip);
-    if(!vidDecoder) return;
-    vidSessionBase = vidKeyAtOrBefore(clip, tf);
-    vidFeedIdx = vidSessionBase; vidFeeding = true; vidFlushed = false;
-  }
-  function vidDriveDecode(clip, tf){
-    // reseek from the nearest keyframe only when we can't continue the current
-    // session: it's gone/errored, the target is behind the session start, or a seek
-    // explicitly requested a new start (vidNeedSeekDecode, set once per seek).
-    // Otherwise feed forward within the session — across keyframes during playback,
-    // and up to a seek target inside its GOP. We deliberately do NOT reseek just
-    // because the decoder was flushed: after a paused seek's flush we must let the
-    // held frames drain and draw the target (reseeking here re-ran the catch-up
-    // forever). A flushed decoder simply won't be fed again (see more()); the next
-    // real seek / resume reseeks via vidNeedSeekDecode / vidPlay.
-    if(!vidDecoder || vidForceReseek || vidSessionBase < 0 ||
-       vidNeedSeekDecode || tf < vidSessionBase){
-      vidSeekDecode(clip, tf);
-      vidNeedSeekDecode = false;
-    }
-    if(!vidDecoder) return;
-    var N = vidUsableN(clip);
-    vidFeedLimit = vidPlaying ? (N - 1) : Math.min(N - 1, tf + VID_MARGIN);
-    var targetPidx = tf - vidSessionBase, toDraw = null;
-    while(vidDisplay.length && vidDisplay[0].pidx <= targetPidx){
-      if(toDraw) try{ toDraw.frame.close(); }catch(e){}
-      toDraw = vidDisplay.shift();
-    }
-    if(toDraw){ vidDrawFrame(toDraw.frame); vidShownPidx = toDraw.pidx; try{ toDraw.frame.close(); }catch(e){} }
-    vidPump(clip);
-  }
-  // which DOM elements this video instance targets, by mode
-  function vidCanvas(){ return $(vidMode === "chart" ? "chart-vid" : "vid-canvas"); }
-  function vidDrawFrame(frame){
-    var cv = vidCanvas(); if(!cv) return;
-    if(cv.width !== frame.displayWidth){ cv.width = frame.displayWidth; cv.height = frame.displayHeight; }
-    cv.getContext("2d").drawImage(frame, 0, 0);
-  }
-  function vidActivateClip(ci){ vidActiveIdx = ci; vidDestroyDecoder(); vidUpdateClip(); }
 
   // ---- playhead overlay on the trace (offset → x, like drawTrace) ----
   function vidPhCtx(){
@@ -3963,68 +4047,163 @@ time
     ctx.beginPath(); ctx.moveTo(x2 - 4, 0); ctx.lineTo(x2 + 4, 0); ctx.lineTo(x2, 7); ctx.closePath(); ctx.fill();
   }
 
-  // ---- per-frame driver (also the playhead loop) ----
+  // ---- video-coverage overlay (shared by the trace and the chart) ----
+  // The camera clips rarely span the whole experiment, so mark where footage
+  // actually exists: a thin "video" track at the top edge (solid where a clip
+  // has frames) plus a dimming of the stretches with no footage across the full
+  // plot height — so a playhead parked over an empty stretch reads as "no video
+  // here", not a stale frame. offToX maps an offset-ns to a canvas x; [xL,xR] is
+  // the plot's horizontal extent and [yTop,yBot] its vertical extent. Only drawn
+  // for the view that owns the active video (gated by mode).
+  // merge [x0,x1] pixel spans whose gap is < 1px so sub-pixel clip seams (the
+  // ~25 ms boundaries between hourly clips) read as one continuous covered stretch
+  // while genuine lead-in/tail gaps (many px) stay visible.
+  function vidMergePx(spans){
+    spans.sort(function(a, b){ return a[0] - b[0]; });
+    var merged = [];
+    for(var j = 0; j < spans.length; j++){
+      var last = merged.length ? merged[merged.length - 1] : null;
+      if(last && spans[j][0] <= last[1] + 1){ if(spans[j][1] > last[1]) last[1] = spans[j][1]; }
+      else merged.push([spans[j][0], spans[j][1]]);
+    }
+    return merged;
+  }
+  function vidDrawCoverage(ctx, mode, offToX, vLo, vHi, xL, xR, yTop, yBot){
+    if(!vidActive || vidMode !== mode || !vidPlayers.length) return;
+    // one merged-pixel-span row per camera, plus the union of all spans for the dim
+    var rows = [], union = [], anyReady = false;
+    vidPlayers.forEach(function(p){
+      if(!p.clips || !p.clips.length) return;
+      var spans = [];
+      for(var i = 0; i < p.clips.length; i++){
+        var c = p.clips[i]; if(!c.boundsReady) continue;
+        anyReady = true;
+        var s = c.startOff < vLo ? vLo : c.startOff, e = c.endOff > vHi ? vHi : c.endOff;
+        if(e > s){ var px = [offToX(s), offToX(e)]; spans.push(px); union.push([px[0], px[1]]); }
+      }
+      rows.push({ color: p.color, name: p.name, segs: vidMergePx(spans) });
+    });
+    if(!anyReady) return;                 // bounds still loading — don't flash "no video everywhere"
+    var single = rows.length === 1;
+    ctx.save();
+    // 1) dim the times NO camera covers (union of all footage), full plot height
+    var um = vidMergePx(union);
+    ctx.fillStyle = "rgba(8,12,13,.45)";
+    var cur = xL;
+    for(var k = 0; k < um.length; k++){
+      if(um[k][0] > cur + 0.5) ctx.fillRect(cur, yTop, um[k][0] - cur, yBot - yTop);
+      if(um[k][1] > cur) cur = um[k][1];
+    }
+    if(cur < xR - 0.5) ctx.fillRect(cur, yTop, xR - cur, yBot - yTop);
+    // 2) one coverage track per camera, stacked at the top: faint full-width bed,
+    //    solid in the camera's colour where it has footage
+    var th = single ? 5 : 4, pitch = th + 2;
+    rows.forEach(function(r, ri){
+      var y = yTop + ri * pitch;
+      ctx.globalAlpha = 0.14; ctx.fillStyle = r.color; ctx.fillRect(xL, y, xR - xL, th);
+      ctx.globalAlpha = 0.85;
+      for(var m = 0; m < r.segs.length; m++){
+        var sx = r.segs[m][0] < xL ? xL : r.segs[m][0], ex = r.segs[m][1] > xR ? xR : r.segs[m][1];
+        if(ex > sx) ctx.fillRect(sx, y, Math.max(1, ex - sx), th);
+      }
+    });
+    ctx.globalAlpha = 1;
+    // 3) label — for a single camera, the familiar "video" tag below the track;
+    //    for several, colours map to the panels (which carry the camera names)
+    if(single){
+      ctx.fillStyle = "rgba(150,200,255,.9)"; ctx.font = '9px ui-monospace,monospace';
+      ctx.textAlign = "start"; ctx.textBaseline = "top";
+      ctx.fillText("video", xL + 4, yTop + th + 1);
+    }
+    ctx.restore();
+  }
+
+  // union of every player's footage (offset space) — the playable range / clamp
+  function vidUnionBounds(){
+    var lo = Infinity, hi = -Infinity;
+    vidPlayers.forEach(function(p){
+      if(p.clips && p.clips.length){
+        if(p.clips[0].startOff < lo) lo = p.clips[0].startOff;
+        var e = p.clips[p.clips.length - 1].endOff; if(e > hi) hi = e;
+      }
+    });
+    if(lo === Infinity){ lo = 0; hi = 0; }
+    return { lo: lo, hi: hi };
+  }
+
+  // ---- per-frame driver: one shared clock + playhead, every player follows ----
   function vidTick(){
     if(!vidActive){ vidPhReq = 0; return; }
     vidPhReq = requestAnimationFrame(vidTick);
-    if(vidPlaying && !vidSeekHold){    // a seek freezes the clock until its frame is shown
-      var last = vidClips[vidClips.length - 1];
+    if(vidPlaying && !vidSeekHold){    // a seek freezes the clock until every frame is shown
+      var b = vidUnionBounds();
       vidPosOff = vidPlayStartOff + (performance.now() - vidPlayPerf) * 1e6 * vidSpeed;
-      if(vidPosOff >= last.endOff){ vidPosOff = last.endOff; vidPlaying = false; vidUpdateBtn(); }
-      if(vidPosOff < vidClips[0].startOff) vidPosOff = vidClips[0].startOff;
+      if(vidPosOff >= b.hi){ vidPosOff = b.hi; vidPlaying = false; vidUpdateBtn(); }
+      if(vidPosOff < b.lo) vidPosOff = b.lo;
     }
     vidDrawPlayhead();
     vidUpdateTime();
-    var ci = vidClipIndexForOff(vidPosOff);
-    if(ci < 0) return;
-    if(ci !== vidActiveIdx){
-      if(!vidLoadingClip){
-        vidLoadingClip = true;
-        var ep = vidEpoch, clip = vidClips[ci];
-        Promise.all([vidDemuxHeader(clip), vidLoadFrameOffsets(clip)]).then(function(){
-          vidLoadingClip = false; if(ep === vidEpoch) vidActivateClip(ci);
-        }, function(){ vidLoadingClip = false; });
-      }
-      return;
-    }
-    var c = vidClips[ci];
-    if(!c.headerReady || !c.framesReady) return;
-    var tf = vidFrameForOff(c, vidPosOff);
-    // when paused and the correct frame is already on screen, stay idle — don't keep
-    // rebuilding the (flushed) decoder every frame
-    var idle = !vidPlaying && !vidSeekHold && !vidForceReseek && vidDecoder &&
-               vidSessionBase >= 0 && vidShownPidx >= (tf - vidSessionBase);
-    if(idle) return;
-    vidDriveDecode(c, tf);
-    // release the seek hold once the target frame has actually been displayed
-    if(vidSeekHold && vidShownPidx >= tf - vidSessionBase){
+    var allSettled = true;
+    for(var i = 0; i < vidPlayers.length; i++){ vidPlayers[i].drive(); if(!vidPlayers[i].settled) allSettled = false; }
+    vidUpdateClip();
+    // release the seek hold once every player has reached its target (or is in a gap)
+    if(vidSeekHold && allSettled){
       vidSeekHold = false;
       if(vidPlaying){ vidPlayPerf = performance.now(); vidPlayStartOff = vidPosOff; }
     }
   }
 
-  // ---- UI + public hooks (element ids depend on the mode) ----
+  // ---- UI + public hooks ----
+  // One shared transport (play/speed/time) per view; element ids depend on the mode.
   function vidIdPlay(){ return vidMode === "chart" ? "chart-vid-play" : "vid-play"; }
   function vidIdTime(){ return vidMode === "chart" ? "chart-vid-time" : "vid-time"; }
-  function vidIdClip(){ return vidMode === "chart" ? "chart-vid-clip" : "vid-clip"; }
-  function vidIdNote(){ return vidMode === "chart" ? "chart-vid-note" : "vid-note"; }
   function vidHideAllPanels(){
-    ["video-block", "chart-vidwrap"].forEach(function(id){ var e = $(id); if(e) e.style.display = "none"; });
+    ["video-block", "chart-vidgrid"].forEach(function(id){ var e = $(id); if(e) e.style.display = "none"; });
     var c = $("chart-vidctl"); if(c) c.style.display = "none";
   }
   function vidShowPanel(show){
     if(vidMode === "chart"){
-      var w = $("chart-vidwrap"), c = $("chart-vidctl");
-      if(w) w.style.display = show ? "block" : "none";
+      var w = $("chart-vidgrid"), c = $("chart-vidctl");
+      if(w) w.style.display = show ? "grid" : "none";
       if(c) c.style.display = show ? "inline-flex" : "none";
     } else {
       var b = $("video-block"); if(b) b.style.display = show ? "block" : "none";
     }
   }
+  // Build the per-camera panels and wire each player to its canvas/note/clip-caption.
+  // Trace: the one player reuses the static #video-block elements. Chart: a responsive
+  // grid of panels, one per camera, colour-keyed to its coverage track.
+  function vidBuildPanels(){
+    if(vidMode === "chart"){
+      var grid = $("chart-vidgrid"); if(!grid) return;
+      grid.innerHTML = "";
+      vidPlayers.forEach(function(p){
+        var panel = document.createElement("div"); panel.className = "vidpanel"; panel.style.borderTopColor = p.color;
+        var cap = document.createElement("div"); cap.className = "vidcap"; cap.style.color = p.color;
+        cap.innerHTML = esc(p.name) + ' <span class="cl"></span>';
+        var wrap = document.createElement("div"); wrap.className = "vidwrap";
+        var cv = document.createElement("canvas"); cv.width = 640; cv.height = 360;
+        var note = document.createElement("div"); note.className = "vidnote"; note.style.display = "none";
+        wrap.appendChild(cv); wrap.appendChild(note);
+        panel.appendChild(cap); panel.appendChild(wrap);
+        grid.appendChild(panel);
+        p.canvas = cv; p.note = note; p.capEl = cap.querySelector(".cl");
+      });
+    } else {
+      var p0 = vidPlayers[0]; if(!p0) return;
+      p0.canvas = $("vid-canvas"); p0.note = $("vid-note"); p0.capEl = $("vid-clip");
+      if(p0.canvas){ p0.canvas._blank = false; p0.canvas.style.display = "inline-block"; }
+    }
+  }
+  // module-level message (no codec / can't read clips) — replaces the panels
   function vidShowNote(msg){
-    var n = $(vidIdNote()), c = vidCanvas();
-    if(n){ n.textContent = msg || ""; n.style.display = msg ? "block" : "none"; }
-    if(c) c.style.display = msg ? "none" : "inline-block";
+    if(vidMode === "chart"){
+      var grid = $("chart-vidgrid"); if(grid && msg) grid.innerHTML = '<div class="vidnote" style="display:block">' + esc(msg) + '</div>';
+    } else {
+      var n = $("vid-note"), c = $("vid-canvas");
+      if(n){ n.textContent = msg || ""; n.style.display = msg ? "block" : "none"; }
+      if(c) c.style.display = msg ? "none" : "inline-block";
+    }
   }
   function vidUpdateBtn(){ var b = $(vidIdPlay()); if(b) b.textContent = vidPlaying ? "⏸ Pause" : "▶ Play"; }
   function vidUpdateTime(){
@@ -4032,29 +4211,44 @@ time
     var t = expAbsolute() ? fmtClockFull(chartAbsNs(vidPosOff)) : (vidPosOff / 1e9).toFixed(3) + " s";
     el.textContent = (vidSeekHold ? "⟳ " : "") + t;
   }
+  function vidSetText(el, s){ if(el && el.textContent !== s) el.textContent = s; }   // avoid per-frame layout thrash
   function vidUpdateClip(){
-    var el = $(vidIdClip()); if(!el || !vidClips) return;
-    var i = vidActiveIdx >= 0 ? vidActiveIdx : vidClipIndexForOff(vidPosOff), c = vidClips[i];
-    el.textContent = "clip " + (i + 1) + "/" + vidClips.length + (c ? " · " + c.name : "");
+    if(vidMode === "chart"){
+      vidPlayers.forEach(function(p){
+        if(!p.capEl || !p.clips) return;
+        if(p.inGap){ vidSetText(p.capEl, "· no footage"); return; }
+        var i = p.activeIdx >= 0 ? p.activeIdx : p.clipIndexForOff(vidPosOff);
+        vidSetText(p.capEl, p.clips.length > 1 ? ("· clip " + (i + 1) + "/" + p.clips.length) : "");
+      });
+      vidSetText($("chart-vid-clip"), vidPlayers.length + " camera" + (vidPlayers.length > 1 ? "s" : ""));
+    } else {
+      var p0 = vidPlayers[0], el = $("vid-clip"); if(!el || !p0 || !p0.clips) return;
+      if(p0.inGap){ vidSetText(el, "no footage at this time"); return; }
+      var j = p0.activeIdx >= 0 ? p0.activeIdx : p0.clipIndexForOff(vidPosOff), c = p0.clips[j];
+      vidSetText(el, "clip " + (j + 1) + "/" + p0.clips.length + (c ? " · " + c.name : ""));
+    }
   }
-  // Jump to a time offset. The playhead holds at the target until that frame is
-  // decoded and shown (vidTick releases the hold), so the decoder catches up once
-  // rather than chasing a moving playhead.
+  // Jump to a time offset. The playhead holds at the target until every player's
+  // frame is decoded and shown (vidTick releases the hold), so the decoders catch
+  // up once rather than chasing a moving playhead.
   function vidSeekOff(off, keepPlaying){
-    if(!vidClips || !vidClips.length) return;
-    var lo = vidClips[0].startOff, hi = vidClips[vidClips.length - 1].endOff;
-    vidPosOff = Math.max(lo, Math.min(hi, off));
-    vidSeekHold = true; vidShownPidx = -1; vidNeedSeekDecode = true;   // one reseek per seek
+    if(!vidPlayers.length) return;
+    var b = vidUnionBounds();
+    vidPosOff = Math.max(b.lo, Math.min(b.hi, off));
+    vidSeekHold = true;
+    vidPlayers.forEach(function(p){ p.markSeek(); });   // one reseek per seek, per player
     vidPlaying = !!keepPlaying;
     vidUpdateBtn();
     if(!vidPhReq) vidTick();
   }
-  // Resume from a paused/held position without reseeking — the decode session
-  // continues forward (reseek only if it was flushed or never started).
+  // Resume from a paused/held position. Players whose session is still alive feed
+  // forward (no reseek); flushed / never-started ones reseek and the clock holds
+  // until they've caught up.
   function vidPlay(){
-    if(!vidActive) return;
-    if(!vidDecoder || vidFlushed){ vidSeekOff(vidPosOff, true); return; }
-    vidPlaying = true; vidSeekHold = false;
+    if(!vidActive || !vidPlayers.length) return;
+    var anyReseek = false;
+    vidPlayers.forEach(function(p){ if(p.flushed || !p.decoder || p.sessionBase < 0){ p.markSeek(); anyReseek = true; } });
+    vidPlaying = true; vidSeekHold = anyReseek;
     vidPlayPerf = performance.now(); vidPlayStartOff = vidPosOff;
     vidUpdateBtn();
     if(!vidPhReq) vidTick();
@@ -4068,44 +4262,58 @@ time
 
   function vidDetach(){
     vidEpoch++;
-    vidActive = false; vidPlaying = false; vidSeekHold = false; vidLoadingClip = false;
+    vidActive = false; vidPlaying = false; vidSeekHold = false;
     if(vidPhReq){ cancelAnimationFrame(vidPhReq); vidPhReq = 0; }
-    vidDestroyDecoder();
-    vidDev = null; vidClips = null; vidActiveIdx = -1; vidPosOff = 0;
+    vidPlayers.forEach(function(p){ p.destroyDecoder(); });
+    vidPlayers = []; vidPosOff = 0;
     vidHideAllPanels();
     var g = vidPhCtx(); if(g) g.ctx.clearRect(0, 0, g.w, g.h);
     var gc = vidChartPhCtx(); if(gc) gc.ctx.clearRect(0, 0, gc.w, gc.h);
   }
-  function vidAttach(dev, mode){
+  // Attach one (trace) or several (chart) camera devices. `devs` may be a single
+  // device or an array; only those with .videos become players.
+  function vidAttach(devs, mode){
     mode = mode || "trace";
-    if(!dev || !dev.videos || !dev.videos.length){ vidDetach(); return; }
-    if(vidDev === dev && vidClips && vidMode === mode){ vidShowPanel(true); if(!vidPhReq && vidActive) vidTick(); return; }
+    if(!devs) devs = [];
+    if(!Array.isArray(devs)) devs = [devs];
+    devs = devs.filter(function(d){ return d && d.videos && d.videos.length; });
+    if(!devs.length){ vidDetach(); return; }
+    // already attached to exactly these devices in this mode? just reveal.
+    if(vidActive && vidMode === mode && vidPlayers.length === devs.length &&
+       vidPlayers.every(function(p, i){ return p.dev === devs[i]; })){
+      vidShowPanel(true); if(!vidPhReq) vidTick(); return;
+    }
     vidDetach();
     vidMode = mode;
-    vidDev = dev;
+    vidPlayers = devs.map(function(d, i){ return makeVidPlayer(d, i); });
+    vidBuildPanels();
     vidShowPanel(true); vidUpdateBtn();
     if(!vidHasCodec){ vidShowNote("Video playback needs WebCodecs (use Chrome or Edge)."); return; }
-    vidShowNote("");
-    vidClips = dev.videos.map(function(av){
-      var base = vidStripExt(av.name);
-      var csv = (dev.csvs || []).filter(function(c){ return vidStripExt(c.name) === base; })[0] || null;
-      return { avi: av, csv: csv, name: base, headerReady: false, framesReady: false, boundsReady: false,
-               idx: [], frameOff: null, nFrames: 0, dtUs: 0, width: 0, height: 0, codec: "avc1.4D4033", startOff: 0, endOff: 0 };
+    // build each player's clip list (avi + paired CSV by base name)
+    vidPlayers.forEach(function(p){
+      p.clips = p.dev.videos.map(function(av){
+        var base = vidStripExt(av.name);
+        var csv = (p.dev.csvs || []).filter(function(c){ return vidStripExt(c.name) === base; })[0] || null;
+        return { avi: av, csv: csv, name: base, headerReady: false, framesReady: false, boundsReady: false,
+                 idx: [], frameOff: null, nFrames: 0, dtUs: 0, width: 0, height: 0, codec: "avc1.4D4033", startOff: 0, endOff: 0 };
+      });
     });
-    if($(vidIdClip())) $(vidIdClip()).textContent = "reading clips…";
     if($(vidIdPlay())) $(vidIdPlay()).disabled = true;
-    var ep = vidEpoch;
-    Promise.all(vidClips.map(vidClipBounds)).then(function(){
+    var ep = vidEpoch, allClips = [];
+    vidPlayers.forEach(function(p){ p.clips.forEach(function(c){ allClips.push(c); }); });
+    Promise.all(allClips.map(vidClipBounds)).then(function(){
       if(ep !== vidEpoch) return;
-      vidClips.sort(function(a, b){ return a.startOff - b.startOff; });
+      vidPlayers.forEach(function(p){ p.clips.sort(function(a, b){ return a.startOff - b.startOff; }); p.activeIdx = -1; p.loadingClip = false; });
       vidActive = true;
       if($(vidIdPlay())) $(vidIdPlay()).disabled = false;
-      vidActiveIdx = -1; vidLoadingClip = false;
-      vidSeekOff(vidClips[0].startOff, false);
+      vidSeekOff(vidUnionBounds().lo, false);
       vidUpdateClip();
+      // clip bounds are now known — redraw the base canvas so the coverage
+      // tracks/dimming (drawn in drawTrace/drawChart) reflect them
+      if(vidMode === "chart"){ if(chartData) drawChart(); } else { scheduleDraw(); }
     }, function(){ if(ep === vidEpoch) vidShowNote("Could not read the video clips."); });
   }
-  // Jump the video to a time offset clicked on the trace (bidirectional sync).
+  // Jump the video to a time offset clicked on the trace/chart (bidirectional sync).
   function vidSeekFromOff(off){ if(vidActive) vidSeekOff(off, vidPlaying); }
 
   // ---------- combined value chart ----------
@@ -4139,19 +4347,21 @@ time
     fillDevCard(dev);
     updateChartBar();
   }
-  // A camera video is a single selectable item per device (kind:"video"); the
-  // visualizer plays at most one, so selecting another replaces the previous.
+  // A camera video is a selectable item per device (kind:"video"); the visualizer
+  // plays every selected camera together, side by side on the shared playhead.
   function videoKey(devName){ return devName + "|video"; }
   function isVideoSelected(devName){ return !!chartSel[videoKey(devName)]; }
-  function selectedVideoDev(){
-    var k = Object.keys(chartSel).filter(function(key){ return chartSel[key].kind === "video"; })[0];
-    return k ? chartSel[k].dev : null;
+  // every selected camera device, in card order (so panels/tracks are stably ordered)
+  function selectedVideoDevs(){
+    var sel = {};
+    Object.keys(chartSel).forEach(function(key){ if(chartSel[key].kind === "video") sel[chartSel[key].devName] = chartSel[key].dev; });
+    if(!experiment) return Object.keys(sel).map(function(n){ return sel[n]; });
+    return experiment.devices.filter(function(d){ return sel[d.name]; });
   }
   function toggleVideoSel(dev){
-    var k = videoKey(dev.name), on = !chartSel[k];
-    // single-video visualizer: drop any other video selection first
-    Object.keys(chartSel).forEach(function(key){ if(chartSel[key].kind === "video") delete chartSel[key]; });
-    if(on) chartSel[k] = { kind: "video", dev: dev, devName: dev.name, name: dev.name + " video" };
+    var k = videoKey(dev.name);
+    if(chartSel[k]) delete chartSel[k];
+    else chartSel[k] = { kind: "video", dev: dev, devName: dev.name, name: dev.name + " video" };
     refreshCards();
     updateChartBar();
   }
@@ -4312,7 +4522,7 @@ time
       (byStream[sk] || (byStream[sk] = { dev: it.dev, s: it.dev.streams[it.sIdx], chs: [] })).chs.push(it);
     });
     var groups = Object.keys(byStream).map(function(k){ return byStream[k]; });
-    var videoDev = selectedVideoDev();
+    var videoDevs = selectedVideoDevs();
     // show the chart view in a loading state
     $("explist").style.display = "none";
     drop.style.display = "none"; loaded.style.display = "none"; results.style.display = "none";
@@ -4336,7 +4546,7 @@ time
         });
       });
       progress.style.display = "none";
-      if(!lines.length && !videoDev){ returnHome(); showError("None of the selected registers held readable values."); return; }
+      if(!lines.length && !videoDevs.length){ returnHome(); showError("None of the selected registers held readable values."); return; }
       // window the chart over the experiment span; if there's no timeline, frame
       // the loaded data's own min→max offset instead
       var lo = 0, hi = full;
@@ -4348,13 +4558,13 @@ time
       chartData = { lines: lines, full: hi - lo, decimated: decimated };
       cvBase = lo; cvFull = hi - lo; cvStart = lo; cvEnd = hi;
       $("chartmeta").textContent = (lines.length + " line" + (lines.length === 1 ? "" : "s"))
-        + (videoDev ? " · " + esc(videoDev.name) + " video" : "")
+        + (videoDevs.length ? " · " + videoDevs.length + " camera" + (videoDevs.length > 1 ? "s" : "") : "")
         + (decimated ? " · decimated for display" : "");
       buildChartLegend();
       $("chartview").style.display = "block";
       drawChart();
-      // attach the selected camera video in chart mode (playhead on #chart)
-      if(videoDev) vidAttach(videoDev, "chart"); else vidDetach();
+      // attach every selected camera in chart mode (one shared playhead on #chart)
+      if(videoDevs.length) vidAttach(videoDevs, "chart"); else vidDetach();
       updateHeaderNav();
     }).catch(function(){
       progress.style.display = "none"; returnHome();
@@ -4517,6 +4727,10 @@ time
       ctx.beginPath(); ctx.moveTo(x0+0.5, padTop); ctx.lineTo(x0+0.5, padTop+plotH);
       ctx.moveTo(x1-0.5, padTop); ctx.lineTo(x1-0.5, padTop+plotH); ctx.stroke();
     }
+
+    // mark where the camera video actually has frames (track + dimmed gaps)
+    vidDrawCoverage(ctx, "chart", function(o){ return plotL + (o - t0)/span*plotW; },
+                    t0, t1, plotL, plotL + plotW, padTop, padTop + plotH);
 
     chartGeom = { plotL: plotL, plotW: plotW, padTop: padTop, plotH: plotH };
     if(abs){
