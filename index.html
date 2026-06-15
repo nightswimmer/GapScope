@@ -41,10 +41,24 @@
     line-height:1.5;
     -webkit-font-smoothing:antialiased;
   }
-  .wrap{margin:0 auto;padding:12px 12px 80px}
+  .wrap{margin:0 auto;padding:0 12px 80px}
 
-  /* nameplate */
-  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:12px}
+  /* nameplate — locked at the top of the viewport (its resting position is the
+     locked position, so it never shifts); everything in one horizontal row */
+  .head{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:nowrap;
+    position:sticky;top:0;z-index:50;background:var(--bg);
+    padding:12px 0;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .head .brand{flex:none}
+  /* the active screen's content shares the header's single line, right of the brand */
+  .head .controls{flex:1;min-width:0;justify-content:flex-end;flex-wrap:nowrap}
+  .head .exphead{flex:1;min-width:0;display:flex;align-items:center;gap:14px;flex-wrap:nowrap;
+    font-family:var(--mono);font-size:13px}
+  .head .exphead .file{color:var(--text);display:flex;align-items:center;gap:10px;min-width:0}
+  .head .exphead .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 8px var(--accent)}
+  .head .exphead .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .head .exphead .expmeta{color:var(--text-dim);font-size:12px;margin-left:10px;white-space:nowrap}
+  .head .exphead .expctl{display:flex;align-items:center;gap:16px;flex-wrap:nowrap;margin-left:auto}
+  .head .exphead .hint{font-family:var(--mono);font-size:11px;color:var(--text-faint);white-space:nowrap}
   .brand{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   .brand .mark{
     width:38px;height:38px;border:1px solid var(--line-bright);border-radius:7px;
@@ -128,7 +142,7 @@
   .loaded .file{color:var(--text);display:flex;align-items:center;gap:10px;min-width:0}
   .loaded .file .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .loaded .file .dot{width:7px;height:7px;border-radius:50%;background:var(--phosphor);flex:none;box-shadow:0 0 8px var(--phosphor)}
-  .loaded .meta{color:var(--text-dim);font-size:12px}
+  .loaded .meta{color:var(--text-dim);font-size:12px;margin-left:auto}
   .loaded a.reload{color:var(--accent);cursor:pointer;font-size:12px;text-decoration:none;border-bottom:1px solid transparent}
   .loaded a.reload:hover{border-bottom-color:var(--accent)}
   .loaded .regsel{position:relative;font-family:var(--mono);font-size:12px}
@@ -161,16 +175,8 @@
 
   /* experiment device list */
   .explist{display:none}
-  .explist .exphead{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
-    background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:12px 16px;
-    font-family:var(--mono);font-size:13px}
-  .explist .exphead .file{color:var(--text);display:flex;align-items:center;gap:10px;min-width:0}
-  .explist .exphead .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 8px var(--accent)}
-  .explist .exphead .expmeta{color:var(--text-dim);font-size:12px;margin-left:10px}
-  .explist .exphead a.reload{color:var(--accent);cursor:pointer;font-size:12px;text-decoration:none;border-bottom:1px solid transparent}
-  .explist .exphead a.reload:hover{border-bottom-color:var(--accent)}
-  .explist .scanline{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.06em;
-    margin:10px 2px 0;min-height:16px}
+  .head .exphead .vidhead{margin-bottom:0}
+  .head .exphead .scanline{color:var(--text-dim);font-size:12px;margin-left:10px;white-space:nowrap}
   .devgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(512px,1fr));gap:12px;margin-top:12px}
   .devcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
     cursor:pointer;transition:border-color .15s}
@@ -215,15 +221,6 @@
   .explist.editing .devcard:hover{border-color:var(--accent)}
   /* combined chart view */
   .chartview{display:none;margin-top:18px}
-  .chartview .exphead{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
-    padding-bottom:12px;border-bottom:1px solid var(--line)}
-  .chartview .exphead .file{color:var(--text);display:flex;align-items:center;gap:10px;min-width:0}
-  .chartview .exphead .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 8px var(--accent)}
-  .chartview .exphead .expmeta{color:var(--text-dim);font-size:12px;margin-left:10px}
-  .chartview .exphead .expctl{display:flex;align-items:center;gap:16px}
-  .chartview a.reload{color:var(--accent);cursor:pointer;font-size:12px;text-decoration:none;border-bottom:1px solid transparent}
-  .chartview a.reload:hover{border-bottom-color:var(--accent)}
-  .chartview .hint{font-family:var(--mono);font-size:11px;color:var(--text-faint)}
   .chartview .legend{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:14px 0 6px}
   .chartview .legend .item{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;
     font-family:var(--mono);font-size:11px;color:var(--text-dim)}
@@ -477,6 +474,32 @@
         <span class="auto-class" id="autoclass"></span>
       </div>
     </div>
+
+    <!-- experiment sub-header (shown on the device-list screen) -->
+    <div class="exphead" id="exphead-exp" style="display:none">
+      <div class="file"><span class="dot"></span><span class="name" id="expname"></span><span class="expmeta" id="expmeta"></span><span class="scanline" id="scanline"></span></div>
+    </div>
+
+    <!-- visualizer sub-header (shown on the Visualizer screen) -->
+    <div class="exphead" id="exphead-chart" style="display:none">
+      <div class="file"><span class="dot"></span><span class="name">Visualizer</span><span class="expmeta" id="chartmeta"></span></div>
+      <div class="expctl">
+        <span class="vidhead" id="chart-vidctl" style="display:none">
+          <button class="vidbtn" id="chart-vid-play" disabled>▶ Play</button>
+          <select class="vidspeed" id="chart-vid-speed" title="Playback speed">
+            <option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+            <option value="8">8×</option><option value="16">16×</option><option value="32">32×</option>
+            <option value="64">64×</option><option value="128">128×</option>
+          </select>
+          <button class="vidbtn" id="chart-vid-all" style="display:none" title="Show all cameras (Esc)">⤢ All cameras</button>
+          <span class="vidclip" id="chart-vid-clip"></span>
+          <span class="vidtime" id="chart-vid-time"></span>
+        </span>
+        <label class="chk"><input type="checkbox" id="chart-norm" checked> Normalize each line</label>
+        <span class="hint">scroll to zoom · drag to pan · double-click to reset</span>
+      </div>
+    </div>
   </div>
 
   <!-- drop zone -->
@@ -498,10 +521,6 @@ time
 
   <!-- experiment device list -->
   <div class="explist" id="explist">
-    <div class="exphead">
-      <div class="file"><span class="dot"></span><span class="name" id="expname"></span><span class="expmeta" id="expmeta"></span></div>
-    </div>
-    <div class="scanline" id="scanline"></div>
     <div class="devgrid" id="devgrid"></div>
   </div>
 
@@ -510,23 +529,6 @@ time
 
   <!-- visualizer: combined value lines + optional camera video, shared time axis -->
   <div class="chartview" id="chartview">
-    <div class="exphead">
-      <div class="file"><span class="dot"></span><span class="name">Visualizer</span><span class="expmeta" id="chartmeta"></span></div>
-      <div class="expctl">
-        <span class="vidhead" id="chart-vidctl" style="display:none">
-          <button class="vidbtn" id="chart-vid-play" disabled>▶ Play</button>
-          <select class="vidspeed" id="chart-vid-speed" title="Playback speed">
-            <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
-            <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
-          </select>
-          <button class="vidbtn" id="chart-vid-all" style="display:none" title="Show all cameras (Esc)">⤢ All cameras</button>
-          <span class="vidclip" id="chart-vid-clip"></span>
-          <span class="vidtime" id="chart-vid-time"></span>
-        </span>
-        <label class="chk"><input type="checkbox" id="chart-norm" checked> Normalize each line</label>
-        <span class="hint">scroll to zoom · drag to pan · double-click to reset</span>
-      </div>
-    </div>
     <div class="vidgrid" id="chart-vidgrid" style="display:none"></div>
     <div class="legend" id="chart-legend"></div>
     <div class="canvas-wrap" id="chart-wrap">
@@ -540,11 +542,11 @@ time
 
   <div class="loaded" id="loaded">
     <div class="file"><span class="dot"></span><span class="name" id="fname"></span></div>
-    <div class="meta" id="fmeta"></div>
     <div class="regsel" id="regsel" style="display:none" title="Choose which stream of this selection to analyze">
       <button type="button" class="regsel-btn" id="regsel-btn"></button>
       <div class="regsel-menu" id="regsel-menu"></div>
     </div>
+    <div class="meta" id="fmeta"></div>
   </div>
 
   <div class="progress" id="progress">
@@ -567,13 +569,18 @@ time
 
     <div class="stats" id="statgrid"></div>
 
+    <!-- errors note (unparseable / out-of-order / duplicate) — below the classification + stats -->
+    <div class="note" id="anom-note" style="display:none"></div>
+
     <div class="block" id="video-block" style="display:none">
       <div class="vidhead">
         <p class="eyebrow">Camera video</p>
         <button class="vidbtn" id="vid-play" disabled>▶ Play</button>
         <select class="vidspeed" id="vid-speed" title="Playback speed">
-          <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+          <option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option>
           <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+          <option value="8">8×</option><option value="16">16×</option><option value="32">32×</option>
+          <option value="64">64×</option><option value="128">128×</option>
         </select>
         <span class="vidclip" id="vid-clip"></span>
         <span class="vidtime" id="vid-time"></span>
@@ -2668,8 +2675,10 @@ time
     }
     if(outOfOrder) extras.push(fmtInt(outOfOrder)+" out-of-order timestamp"+(outOfOrder===1?"":"s"));
     if(duplicates) extras.push(fmtInt(duplicates)+" duplicate timestamp"+(duplicates===1?"":"s"));
-    if(extras.length){ note.style.display="block"; note.textContent = extras.join("  ·  "); }
-    else note.style.display="none";
+    var aNote = $("anom-note");
+    if(extras.length){ aNote.style.display="block"; aNote.textContent = extras.join("  ·  "); }
+    else aNote.style.display="none";
+    note.style.display="none";   // the shared error note isn't used inside the results view
 
     // initialise / preserve the zoom window
     minWindowNs = intervalNs * 5 || 1e6;   // uniform tightest zoom: ~5 samples, regardless of capture size
@@ -2691,6 +2700,7 @@ time
     renderTightTable();
     applyViewVisibility();
     refreshStreamSelector();   // chip reflects the resolved type (and any override)
+    updateHeaderNav();         // sync the locked header's per-screen sub-rows
   }
 
   function buildChannelLegend(){
@@ -3102,6 +3112,9 @@ time
     $("chartnew").style.display = (onDeviceList && !chartEditMode) ? "" : "none";
     $("chartviz").style.display = (onDeviceList && chartEditMode) ? "" : "none";
     $("chartcancel").style.display = (onDeviceList && chartEditMode) ? "" : "none";
+    // per-screen sub-header rows that now live inside the locked header
+    $("exphead-exp").style.display = isShown("explist") ? "" : "none";
+    $("exphead-chart").style.display = chartOpen ? "" : "none";
   }
   // From a device analysis view or the combined chart, return to the device list.
   function goBackToDevices(){
@@ -3308,7 +3321,8 @@ time
           return;
         }
         var single = cfiles.length === 1 ? cfiles[0].name : s.base;
-        var label = currentDevice ? (currentDevice.name + " · " + single) : single;
+        // inside a device, just the device name — the selector beside it names the stream
+        var label = currentDevice ? currentDevice.name : single;
         var extra = cfiles.length > 1 ? (" · " + cfiles.length + " files combined") : "";
         finishLoad(label, s.bytes, loadStart, extra);
       }).catch(function(){
@@ -3328,7 +3342,8 @@ time
         return;
       }
       var label = files.length > 1 ? (regName + " — " + files.length + " files") : files[0].name;
-      if(currentDevice) label = currentDevice.name + " · " + (files.length > 1 ? regName : files[0].name);
+      // inside a device, just the device name — the selector beside it names the stream
+      if(currentDevice) label = currentDevice.name;
       var extra = files.length > 1 ? (" · " + files.length + " files combined") : "";
       finishLoad(label, s.bytes, loadStart, extra);
     }).catch(function(){
@@ -3706,6 +3721,9 @@ time
   // exact across dropped frames and clip boundaries. AVI carries H.264 in Annex-B
   // with in-band SPS/PPS; the browser's VideoDecoder does the decoding.
   var VID_MARGIN = 8;        // frames decoded past a paused target so held B-frames flush out
+  var VID_SKIP_NS = 5e9;     // ←/→ keys jump the playhead this far (5 s)
+  var VID_SCRUB_LAG = 60;    // frames the display may fall behind the playhead before…
+  var VID_SCRUB_TICKS = 6;   // …this many consecutive lagging ticks switch to keyframe-only scrub
   var VID_GAP_TOL = 1e9;     // ns: gaps below this (e.g. the ~25 ms clip seams) aren't "no footage"
   var VID_COLORS = ["#4aa8ff", "#e0b020", "#39d0a8", "#e0604a", "#b07ff0", "#f08ad0", "#90d050", "#c0c8d0"];
   var vidMode = "trace";     // "trace" → device analysis view; "chart" → the visualizer
@@ -3915,6 +3933,7 @@ time
       decoder: null, display: [], outCount: 0, sessionBase: -1,
       feedIdx: 0, feedLimit: 0, pumping: false, feeding: false, flushed: false,
       shownPidx: -1, forceReseek: false, needSeekDecode: false,
+      scrubActive: false, scrubKf: -1, scrubBusy: false, lagTicks: 0,
       settled: true, inGap: false, ready: false,
       canvas: null, note: null, capEl: null   // DOM targets (set when the panel is built)
     };
@@ -3944,7 +3963,12 @@ time
       p.destroyDecoder();
       p.outCount = 0; p.flushed = false; p.shownPidx = -1; p.forceReseek = false;
       var dec = new VideoDecoder({
-        output: function(frame){ p.display.push({ pidx: p.outCount++, frame: frame }); },
+        output: function(frame){
+          // keyframe-scrub mode draws each keyframe straight to the canvas — only
+          // independent keyframes are fed, so there's no presentation-order bookkeeping
+          if(p.scrubActive){ p.drawFrame(frame); try{ frame.close(); }catch(e){} return; }
+          p.display.push({ pidx: p.outCount++, frame: frame });
+        },
         // an error wedges this decoder — drop it so the next tick rebuilds the session
         error: function(){ if(p.decoder === dec) p.forceReseek = true; }
       });
@@ -4019,6 +4043,35 @@ time
       if(toDraw){ p.drawFrame(toDraw.frame); p.shownPidx = toDraw.pidx; try{ toDraw.frame.close(); }catch(e){} }
       p.pump(clip);
     };
+    // ---- keyframe-only scrub (used when the decoder can't keep up at high speed) ----
+    // Keyframes are self-contained, so showing only them is correct regardless of
+    // B-frames (the trap that broke the per-frame approach) and needs no per-frame
+    // decoder recreation (the trap that crashed the GPU). The decoder is recreated only
+    // when toggling this mode on/off — rare, so it's safe.
+    p.enterScrub = function(clip){
+      p.scrubActive = true; p.scrubKf = -1; p.scrubBusy = false; p.lagTicks = 0;
+      p.newDecoder(clip);   // a clean decoder fed only independent keyframes
+    };
+    p.exitScrub = function(){
+      p.scrubActive = false; p.scrubBusy = false; p.scrubKf = -1; p.lagTicks = 0;
+      p.markSeek();         // rebuild precise contiguous decode from the current position
+    };
+    // Show the keyframe at/before the target. One feed in flight at a time (scrubBusy);
+    // a flush forces the lone keyframe out, and the output callback draws it.
+    p.scrubStep = function(clip, tf){
+      if(!p.decoder || p.scrubBusy) return;
+      var kf = vidKeyAtOrBefore(clip, tf);
+      if(kf === p.scrubKf) return;   // already showing the nearest keyframe
+      p.scrubKf = kf; p.scrubBusy = true;
+      var myDec = p.decoder, ep = vidEpoch, f = clip.idx[kf], dtUs = clip.dtUs || 1;
+      vidReadBuf(clip.avi, f.pos, f.size).then(function(ab){
+        if(p.decoder !== myDec || ep !== vidEpoch || !p.scrubActive){ p.scrubBusy = false; return; }
+        try{
+          myDec.decode(new EncodedVideoChunk({ type: "key", timestamp: kf * dtUs, duration: dtUs, data: new Uint8Array(ab) }));
+          myDec.flush().then(function(){ p.scrubBusy = false; }, function(){ p.scrubBusy = false; });
+        }catch(e){ p.scrubBusy = false; }
+      }, function(){ p.scrubBusy = false; });
+    };
     p.drawFrame = function(frame){
       var cv = p.canvas; if(!cv) return;
       cv._blank = false;
@@ -4046,7 +4099,7 @@ time
     p.drive = function(){
       if(!p.clips || !p.clips.length){ p.settled = true; return; }
       var loc = p.locate(vidPosOff);
-      if(loc.gap){ p.inGap = true; p.drawGap(); p.settled = true; return; }
+      if(loc.gap){ p.inGap = true; p.drawGap(); p.settled = true; p.lagTicks = 0; if(p.scrubActive) p.exitScrub(); return; }
       p.inGap = false;
       var ci = loc.ci;
       if(ci !== p.activeIdx){
@@ -4066,13 +4119,25 @@ time
       var c = p.clips[ci];
       if(!c.headerReady || !c.framesReady){ p.settled = false; return; }
       var tf = vidFrameForOff(c, vidPosOff);
+      // keyframe-scrub: while clearly lagging in free playback, track the playhead with
+      // keyframes only; drop back to precise decode for any pause / seek / decoder error
+      // (which also re-evaluates the lag fresh on resume).
+      if(p.scrubActive){
+        if(!vidPlaying || vidSeekHold || p.forceReseek){ p.exitScrub(); }
+        else { p.scrubStep(c, tf); p.settled = true; return; }
+      }
       // when paused with the right frame already shown, stay idle — don't keep
       // rebuilding the (flushed) decoder every frame
       var idle = !vidPlaying && !vidSeekHold && !p.forceReseek && p.decoder &&
                  p.sessionBase >= 0 && p.shownPidx >= (tf - p.sessionBase);
-      if(idle){ p.settled = true; return; }
+      if(idle){ p.settled = true; p.lagTicks = 0; return; }
       p.driveDecode(c, tf);
-      p.settled = (p.shownPidx >= tf - p.sessionBase);
+      var lag = (tf - p.sessionBase) - p.shownPidx;
+      p.settled = (lag <= 0);
+      // detect a decoder that can't keep up (free playback only) → switch to keyframe scrub
+      if(vidPlaying && !vidSeekHold && p.decoder && p.sessionBase >= 0 && lag > VID_SCRUB_LAG){
+        if(++p.lagTicks >= VID_SCRUB_TICKS) p.enterScrub(c);
+      } else { p.lagTicks = 0; }
     };
     p.markSeek = function(){ p.needSeekDecode = true; p.shownPidx = -1; p.settled = false; };
     p.bounds = function(){ return { lo: p.clips[0].startOff, hi: p.clips[p.clips.length-1].endOff }; };
@@ -4558,7 +4623,9 @@ time
   function vidPause(){
     if(!vidPlaying && !vidSeekHold) return;
     if(vidPlaying && !vidSeekHold) vidPosOff = vidPlayStartOff + (performance.now() - vidPlayPerf) * 1e6 * vidSpeed;
-    vidPlaying = false; vidSeekHold = false; vidUpdateBtn();
+    vidPlaying = false; vidSeekHold = false;
+    vidPlayers.forEach(function(p){ if(p.scrubActive) p.exitScrub(); });   // precise frame when stopping / changing speed
+    vidUpdateBtn();
   }
   function vidToggle(){ if(vidPlaying) vidPause(); else vidPlay(); }
 
@@ -4620,6 +4687,15 @@ time
   }
   // Jump the video to a time offset clicked on the trace/chart (bidirectional sync).
   function vidSeekFromOff(off){ if(vidActive) vidSeekOff(off, vidPlaying); }
+  // Skip the playhead by a delta (±5 s via the ←/→ keys), relative to where it is
+  // right now — when playing, that's the live clock position, not the last tick.
+  function vidSkip(deltaNs){
+    if(!vidActive || !vidPlayers.length) return;
+    var cur = (vidPlaying && !vidSeekHold)
+      ? vidPlayStartOff + (performance.now() - vidPlayPerf) * 1e6 * vidSpeed
+      : vidPosOff;
+    vidSeekOff(cur + deltaNs, vidPlaying);
+  }
 
   // ---------- combined value chart ----------
   // A selection of register value-lines across devices, plotted together against
@@ -4679,8 +4755,51 @@ time
     $("chartviz").setAttribute("data-tip",
       n ? ("Visualize " + n + " selected stream" + (n === 1 ? "" : "s")) : "Visualize the selected streams");
   }
+  // ---- per-experiment Visualizer config persistence (localStorage) ----
+  // Keyed by the experiment (folder) name. Saved when you click Visualize (and when
+  // the Normalize toggle changes); pre-loaded when you start a New Visualizer for the
+  // same experiment.
+  function loadVizConfigs(){
+    try{ return JSON.parse(localStorage.getItem("gapscope.visualizers")) || {}; }
+    catch(e){ return {}; }
+  }
+  function saveVizConfig(){
+    if(!experiment) return;
+    var lines = [], videos = [];
+    Object.keys(chartSel).forEach(function(k){
+      var it = chartSel[k];
+      if(it.kind === "video") videos.push(it.devName);
+      else lines.push({ devName: it.devName, sIdx: it.sIdx, ch: it.ch });
+    });
+    if(!lines.length && !videos.length) return;
+    var all = loadVizConfigs();
+    all[experiment.name] = { lines: lines, videos: videos, norm: $("chart-norm").checked };
+    try{ localStorage.setItem("gapscope.visualizers", JSON.stringify(all)); }catch(e){}
+  }
+  // Rebuild chartSel from the saved config, skipping any stream/channel/video that no
+  // longer exists (the folder may have changed since the config was saved).
+  function restoreChartSel(){
+    chartSel = {};
+    if(!experiment) return;
+    var cfg = loadVizConfigs()[experiment.name];
+    if(!cfg) return;
+    function devByName(n){ return experiment.devices.filter(function(d){ return d.name === n; })[0]; }
+    (cfg.lines || []).forEach(function(L){
+      var dev = devByName(L.devName);
+      if(!dev || !dev.streams || !dev.streams[L.sIdx]) return;
+      var names = streamChannelNames(dev.streams[L.sIdx], dev.schema);
+      if(L.ch < 0 || L.ch >= names.length) return;
+      setLine(dev, L.sIdx, L.ch, names[L.ch], true);
+    });
+    (cfg.videos || []).forEach(function(dn){
+      var dev = devByName(dn);
+      if(dev && dev.videos && dev.videos.length)
+        chartSel[videoKey(dev.name)] = { kind: "video", dev: dev, devName: dev.name, name: dev.name + " video" };
+    });
+    if(cfg.norm != null) $("chart-norm").checked = !!cfg.norm;
+  }
   function enterChartEdit(){
-    chartEditMode = true; chartSel = {};
+    chartEditMode = true; restoreChartSel();   // pre-fill from the saved per-experiment config
     $("explist").classList.add("editing");
     updateChartBar();
     updateHeaderNav();
@@ -4872,6 +4991,7 @@ time
       // attach every selected camera in chart mode (one shared playhead on #chart)
       if(videoDevs.length) vidAttach(videoDevs, "chart"); else vidDetach();
       updateHeaderNav();
+      saveVizConfig();   // remember this selection for the experiment (folder)
     }).catch(function(){
       progress.style.display = "none"; returnHome();
       showError("Could not read the selected register values.");
@@ -5266,14 +5386,15 @@ time
   }
   function updateScanLine(){
     var el = $("scanline");
-    if(!scanState || !scanState.queue.length){ el.textContent = ""; return; }
+    function set(txt){ el.textContent = txt ? "· " + txt : ""; el.style.display = txt ? "" : "none"; }
+    if(!scanState || !scanState.queue.length){ set(""); return; }
     if(scanState.idx >= scanState.queue.length){
-      el.textContent = "summary scan complete · " + scanState.queue.length + " streams";
+      set("summary scan complete · " + scanState.queue.length + " streams");
       return;
     }
     var t = scanState.queue[scanState.idx];
-    el.textContent = "scanning " + (scanState.idx + 1) + "/" + scanState.queue.length + " — "
-      + t.dev.name + " · " + streamLabel(t.stream, t.dev.schema);
+    set("scanning " + (scanState.idx + 1) + "/" + scanState.queue.length + " — "
+      + t.dev.name + " · " + streamLabel(t.stream, t.dev.schema));
   }
 
   // drag/drop + click
@@ -5338,10 +5459,20 @@ time
   // Esc: first leave a focused (enlarged) camera; otherwise return to the device
   // list (same condition as the back button being shown).
   window.addEventListener("keydown", function(e){
-    if(e.key !== "Escape") return;
-    if(vidActive && vidMode === "chart" && vidRoi){ vidClearRoi(); e.preventDefault(); return; }
-    if(vidActive && vidMode === "chart" && vidUnfocus()){ e.preventDefault(); return; }
-    if(experiment && (currentDevice || isShown("chartview"))){ e.preventDefault(); goBackToDevices(); }
+    if(e.key === "Escape"){
+      if(vidActive && vidMode === "chart" && vidRoi){ vidClearRoi(); e.preventDefault(); return; }
+      if(vidActive && vidMode === "chart" && vidUnfocus()){ e.preventDefault(); return; }
+      if(experiment && (currentDevice || isShown("chartview"))){ e.preventDefault(); goBackToDevices(); }
+      return;
+    }
+    // ←/→ skip the video ±5 s (ignored while typing in a field)
+    if(e.key === "ArrowLeft" || e.key === "ArrowRight"){
+      if(!vidActive || !vidPlayers.length) return;
+      var ae = document.activeElement;
+      if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;
+      vidSkip(e.key === "ArrowRight" ? VID_SKIP_NS : -VID_SKIP_NS);
+      e.preventDefault();
+    }
   });
   // custom stream dropdown: toggle the popup, pick an option, close on outside click
   $("regsel-btn").addEventListener("click", function(e){
@@ -5360,7 +5491,7 @@ time
   $("chartnew").addEventListener("click", enterChartEdit);
   $("chartcancel").addEventListener("click", exitChartEdit);
   $("chartviz").addEventListener("click", visualizeChart);
-  $("chart-norm").addEventListener("change", drawChart);
+  $("chart-norm").addEventListener("change", function(){ drawChart(); saveVizConfig(); });
   // click a chart legend entry to show/hide that line
   $("chart-legend").addEventListener("click", function(e){
     var it = e.target.closest(".item[data-i]"); if(!it || !chartData) return;
