@@ -4963,11 +4963,34 @@ time
         // burst streams: break the line across inter-burst silences rather than
         // drawing a long connecting segment over the empty stretch
         var st = g.s.stats;
-        var brk = (st && st.type === "burst" && st.silenceNs) ? st.silenceNs : Infinity;
+        var off = p.offsets;
+        var isBurst = !!(st && st.type === "burst");
+        var brk = (isBurst && st.silenceNs) ? st.silenceNs : Infinity;
+        var breaks = null;
+        if(isBurst && off && off.length > 2){
+          // derive the silence floor from the samples actually loaded here, rather
+          // than the background scan's first-65k-gap estimate (which can miss the
+          // shorter silences of later bursts). Same bimodal logic as the analyzer;
+          // fall back to the scan value when there's no clear silence band.
+          var gg = [];
+          for(var gi2=1; gi2<off.length; gi2++){ var d = off[gi2] - off[gi2-1]; if(d > 0) gg.push(d); }
+          if(gg.length){
+            var rr = streamRegularity(gg, detectInterval(gg), tolerance);
+            if(isFinite(rr.silenceNs)) brk = rr.silenceNs;
+          }
+          // precompute the silence-boundary indices once, so the pen-lift in
+          // drawChart is identical at every zoom level (independent of how many
+          // samples the draw-time decimation `step` skips over)
+          if(isFinite(brk)){
+            breaks = [];
+            for(var bk=1; bk<off.length; bk++){ if(off[bk] - off[bk-1] >= brk) breaks.push(bk); }
+          }
+        }
         g.chs.forEach(function(c){
           if(c.ch >= p.nEl) return;
           lines.push({ label: g.dev.name + " · " + c.name, off: p.offsets,
-                       vals: p.chans[c.ch], min: p.min[c.ch], max: p.max[c.ch], breakNs: brk });
+                       vals: p.chans[c.ch], min: p.min[c.ch], max: p.max[c.ch],
+                       breakNs: brk, breaks: breaks });
         });
       });
       progress.style.display = "none";
@@ -5111,14 +5134,23 @@ time
       if(b - a < 1) return;
       var step = Math.max(1, Math.floor((b - a) / (plotW * 2)));   // ~2 points per pixel
       var brk = L.breakNs || Infinity;
+      var breaks = L.breaks;   // precomputed silence-boundary indices (zoom-independent)
       ctx.strokeStyle = chartLineColor(o.i); ctx.lineWidth = 1; ctx.beginPath();
-      var started = false, prevOff = 0;
+      var started = false, prevOff = 0, bp = 0;
+      if(breaks){ while(bp < breaks.length && breaks[bp] <= a) bp++; }   // first boundary after the start sample
       for(var i=a; i<b && i<nN; i+=step){
         var v = vals[i]; if(v !== v) continue;             // skip NaN
         var x = plotL + (off[i] - t0)/span*plotW;
         var y = padTop + plotH*(1 - (v - lo)/(hi - lo));
-        // burst silence → lift the pen rather than connect across the empty stretch
-        if(!started || (off[i] - prevOff) > brk){ ctx.moveTo(x, y); started = true; }
+        // burst silence → lift the pen rather than connect across the empty stretch.
+        // A boundary anywhere inside the (prev..i] step interval breaks the line, so
+        // the result is identical no matter how many samples `step` skips (no longer
+        // dependent on zoom, which used to inflate the drawn-sample gap past `brk`).
+        var brokeHere = false;
+        if(breaks){
+          if(bp < breaks.length && breaks[bp] <= i){ brokeHere = true; while(bp < breaks.length && breaks[bp] <= i) bp++; }
+        } else if(started && (off[i] - prevOff) > brk){ brokeHere = true; }   // fallback (no precomputed breaks)
+        if(!started || brokeHere){ ctx.moveTo(x, y); started = true; }
         else ctx.lineTo(x, y);
         prevOff = off[i];
       }
