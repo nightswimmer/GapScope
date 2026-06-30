@@ -25,6 +25,7 @@
     --tight-dim:rgba(157,140,255,.14);
     --dup:#3bd6e0;
     --ooo:#ff6fd0;
+    --spike:#9be84f;
     --accent:#4aa8ff;
     --mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -622,6 +623,7 @@ time
         <div class="item" style="margin-left:auto"><span class="sw" style="background:var(--tight)"></span>too close ▾</div>
         <div class="item"><span class="sw" style="background:var(--dup);border-radius:50%"></span>duplicate</div>
         <div class="item"><span class="sw" style="background:var(--ooo);border-radius:50%"></span>out-of-order</div>
+        <div class="item"><span class="sw" style="background:var(--spike);transform:rotate(45deg)"></span>future spike</div>
       </div>
       <div class="legend" id="chan-legend" style="display:none"></div>
       <div class="canvas-wrap" id="trace-wrap">
@@ -643,6 +645,7 @@ time
         <div class="item"><span class="sw" style="background:var(--drop-hot)"></span>100+</div>
         <div class="item" style="margin-left:auto"><span class="sw" style="background:var(--dup);border-radius:50%"></span>duplicate ⌃</div>
         <div class="item"><span class="sw" style="background:var(--ooo);border-radius:50%"></span>out-of-order ⌄</div>
+        <div class="item"><span class="sw" style="background:var(--spike);transform:rotate(45deg)"></span>future spike ⌃</div>
       </div>
       <div class="canvas-wrap" id="heat-wrap" style="padding-bottom:14px">
         <canvas id="heat"></canvas>
@@ -744,6 +747,9 @@ time
   var gapEvents = [];        // {start, end, gapNs, missing}
   var tightEvents = [];      // {start, gapNs} for spacings below closeNs
   var oooEvents = [];        // out-of-order: {at, target} sorted by at — at=msg's (too-early) time, target=where it'd sit to be in order
+  var spikeEvents = [];      // forward/future-timestamp spikes: {at, expected} — at=corrupt (far-future) time, expected=where the sample should sit (in cadence)
+  var spikeGaps = null;      // {gapIndex:1} for the two gaps a spike consumes (into-spike + back-step), excluded from columns()/pyramid so the heatmap/collapsed trace/hover agree with the counts
+  var pyrSpikeKey = "";      // signature of the spike-gap set the current pyramid was built with (triggers a rebuild when it changes)
   var msgRuns = [0];         // start index of each monotonic run of offsets (boundaries at out-of-order steps), for time-range queries on non-monotonic offsets
   var eventList = [];        // merged anomalies sorted by time: {t, kind, gapNs, missing}
   var eventTimes = [];       // parallel array of t for binary search
@@ -821,6 +827,7 @@ time
     viewStart = 0; viewEnd = 0;   // force full-extent view for the new capture
     heatEpoch++; heatCache = null;   // invalidate the cached heatmap columns
     pyramid = null;                  // drop the old LOD pyramid
+    spikeGaps = null; pyrSpikeKey = "";   // clear the previous stream's forward-spike exclusions
   }
 
   // Per-line parser. Holds parse state (header detection, ordering) across
@@ -1588,6 +1595,14 @@ time
   var CLASS_COVER_MIN = 0.5;   // active fraction (n·Δt / timeline) above which a stream is constant
   var CLASS_JUMP      = 8;     // ratio of the bimodal jump that marks an in-data silence band
   var CLASS_BREAK_MULT= 12;    // an in-data silence must be at least this × Δt (sanity floor)
+  // Forward-spike discriminator: a lone sample whose timestamp jumps far into the
+  // future (a dropout-sized gap into it) is a spike — not a real outage — when the
+  // very next gap steps a dropout-sized amount BACK (g<0, |g|>tol·Δt) and the
+  // stream resumes the pre-spike cadence within SPIKE_RESUME_K intervals (the net
+  // progress across the spike, offsets[i+1]−offsets[i−1], is a small +multiple of
+  // Δt). A real outage never produces the back-step; an adjacent reorder steps back
+  // only ~1 interval (under tol·Δt), so neither matches. See TODO.md.
+  var SPIKE_RESUME_K  = 3;     // max intervals of real progress across a confirmed spike
 
   // Cadence test, independent of the experiment span: is there a dominant Δt,
   // and where (if anywhere) does an in-data silence band begin? Returns
@@ -1653,12 +1668,16 @@ time
     tightEvents = [];
     silenceEvents = [];
     oooEvents = [];
+    spikeEvents = [];
     // offsets is non-decreasing EXCEPT at out-of-order steps (g<0); those break
     // points split it into sorted "runs". msgRuns holds each run's start index so
     // a time-range query (the message-number renderer) can binary-search within a
     // run instead of trusting a global binary search the reorders would mislead.
     msgRuns = [0];
+    spikeGaps = null;          // rebuilt below only if a spike is found
     var worst = 0, missSum = 0, tightest = Infinity, runs = 1;
+    var spikeBack = -1;        // index of a g<0 step whose out-of-order is suppressed (the back-step after a forward spike)
+    var spikeMax = intervalNs * SPIKE_RESUME_K;
     for(var i=0;i<gaps.length;i++){
       var g = gaps[i];
       if(g >= silenceNs){
@@ -1666,16 +1685,39 @@ time
         silenceEvents.push({ start: offsets[i], end: offsets[i+1], gapNs: g });
         runs++;
       } else if(!pontual && g > threshold){
+        // Forward-spike check (look ahead): offsets[i+1] is a corrupt/future
+        // timestamp — not a real dropout — when the next gap steps a dropout-sized
+        // amount back and the stream then resumes the pre-spike cadence. Don't
+        // count this gap as missing, and suppress the back-step's out-of-order.
+        if(i+1 < gaps.length){
+          var gOut = gaps[i+1];
+          var resume = g + gOut;   // = offsets[i+2] − offsets[i]: net progress across the spike
+          if(gOut < 0 && -gOut > threshold && resume > 0 && resume <= spikeMax && resume < silenceNs){
+            spikeEvents.push({ at: offsets[i+1], expected: offsets[i] + intervalNs, idx: i+1 });
+            spikeBack = i+1;
+            // exclude both consumed gaps from the column/pyramid aggregation so the
+            // heatmap, collapsed trace and hover stop drawing the spike as a dropout
+            // (into-spike gap i) and an out-of-order (back-step gap i+1)
+            if(!spikeGaps) spikeGaps = {};
+            spikeGaps[i] = 1; spikeGaps[i+1] = 1;
+            continue;            // this gap belongs to the spike; not a dropout, not too-close
+          }
+        }
         if(g > worst) worst = g;   // worst dropout excludes silences
         var miss = Math.max(1, Math.round(g/intervalNs) - 1);
         missSum += miss;
         gapEvents.push({ start: offsets[i], end: offsets[i+1], gapNs: g, missing: miss });
       } else if(g < 0){
-        // out-of-order: the sample sits at offsets[i+1] (earlier than its
-        // predecessor offsets[i]); to be in order it would need offsets[i]'s time.
-        // It also starts a new monotonic run at i+1.
-        oooEvents.push({ at: offsets[i+1], target: offsets[i] });
-        msgRuns.push(i+1);
+        // a forward spike's back-step still breaks monotonicity (the next sample is
+        // earlier than the corrupt one), so it stays a run boundary — but it is NOT
+        // an out-of-order anomaly: the sample is fine, it only looked backwards
+        // relative to the bogus predecessor.
+        if(i !== spikeBack){
+          // out-of-order: the sample sits at offsets[i+1] (earlier than its
+          // predecessor offsets[i]); to be in order it would need offsets[i]'s time.
+          oooEvents.push({ at: offsets[i+1], target: offsets[i] });
+        }
+        msgRuns.push(i+1);   // new monotonic run at i+1 either way
       }
       // too-close is measured against the cadence floor; a pontual stream has no
       // cadence, so the concept doesn't apply. A 0-gap is a duplicate, not "too
@@ -1689,6 +1731,14 @@ time
     // sorted by the dot's (too-early) time so the arrow renderer can binary-search
     // the events on screen instead of scanning them all every frame
     oooEvents.sort(function(a,b){ return a.at - b.at; });
+
+    // The LOD pyramid is built once at load, before spikes are known; if this
+    // analyse changed the excluded-spike set, rebuild it (rare — only on captures
+    // with spikes, or a settings change that creates/removes one) so the zoomed-out
+    // aggregation matches the spike-aware counts. analyze() runs before any draw in
+    // render(), so the fresh pyramid is in place by the time the trace/heatmap draw.
+    var spikeKey = spikeGaps ? Object.keys(spikeGaps).join(",") : "";
+    if(spikeKey !== pyrSpikeKey){ heatEpoch++; heatCache = null; buildPyramid(); }
 
     // expected/dropped depend on the model: pontual counts nothing. Constant and
     // burst both count missing as the sum over detected dropouts (missSum) — so
@@ -1714,7 +1764,10 @@ time
       events: gapEvents.length, worst: worst, rate: rate, missSum: missSum,
       tight: tightEvents.length, tightest: tightest,
       type: streamClass, runs: runs, silences: silenceEvents.length, silenceNs: silenceNs,
-      coverage: cl.coverage
+      coverage: cl.coverage,
+      // out-of-order is the spike-adjusted count (forward spikes don't blame their
+      // successors); duplicates come straight from parse. spikes = forward-jump anomalies.
+      outOfOrder: oooEvents.length, duplicates: duplicates, spikes: spikeEvents.length
     };
   }
 
@@ -1936,6 +1989,7 @@ time
   // is still captured. O(N) time, ~N/32 extra memory.
   function buildPyramid(){
     pyramid = null;
+    pyrSpikeKey = spikeGaps ? Object.keys(spikeGaps).join(",") : "";   // signature this build accounts for
     var N = offsets.length;
     if(N < LOD_BASE*4) return;        // small enough that raw scans stay cheap
     var base = LOD_BASE, n0 = Math.ceil(N/base), gn = gaps.length;
@@ -1944,6 +1998,7 @@ time
       var a = b*base, e = Math.min(a+base, N);
       var mg = 0, ng = Infinity, nDup = 0, nOoo = 0, gEnd = Math.min(e-1, gn-1);
       for(var j=a; j<=gEnd; j++){
+        if(spikeGaps && spikeGaps[j]) continue;   // a forward-spike's gaps aren't dropouts/reorders
         var g = gaps[j];
         if(g > mg) mg = g;
         if(g > 0 && g < ng) ng = g;   // strictly positive: a 0-gap is a duplicate, not "too close"
@@ -2038,6 +2093,7 @@ time
     // so a wide dropout fills its full pixel extent in the collapsed renderer
     var gStart = Math.max(0, iStart-1);
     for(var k = gStart; k < iEnd && k < gaps.length; k++){
+      if(spikeGaps && spikeGaps[k]) continue;   // forward-spike gaps: not a dropout (into-spike) nor an out-of-order (back-step)
       var s = offsets[k], e = offsets[k+1], gk = gaps[k];
       // a 0-gap (duplicate) or backwards step (out-of-order) has no forward time
       // extent to spread; tally it at one column. A duplicate sits at the shared
@@ -2186,6 +2242,11 @@ time
     // sample timestamps: one vertical line per occupied pixel column, drawn
     // under the anomaly/raw layers so the brighter error marks sit on top
     if(showTs) drawAllTimestamps(ctx, w, h, col);
+    // a forward-spike's own timestamp line sits at its bogus time; draw it straight
+    // from spikeEvents (not the column aggregation, which lumps a sample's "present"
+    // at its LOD-bin start and so loses the line at high zoom) and in the anomaly
+    // colour, so the corrupt sample's position is always marked
+    if(showTs && spikeEvents.length) drawSpikeTimestamps(ctx, w, h, t0, t1, span);
 
     var rawOn = showRaw && channelCount > 0;
     var baseY = Math.round(h * 0.62);
@@ -2200,6 +2261,11 @@ time
       var msg = (showRaw && channelCount===0) ? "No data columns in this file" : "Enable “Show Raw Data”, “Show Anomalies”, “Show All Timestamps” or “Show Message Number”";
       ctx.fillText(msg, w/2, h/2); ctx.textAlign = "start";
     }
+
+    // forward/future-timestamp spikes: a diamond at the cadence slot where the
+    // sample SHOULD sit + an arrow to where it actually plotted. Shown in both the
+    // anomaly and the timestamp layers so the connector pairs with the spike's line.
+    if(showAnom || showTs) drawSpikes(ctx, w, h, t0, t1, span, baseY);
 
     // when the visible window falls entirely outside the stream's data (the
     // empty timeline before/after a burst, or inside a silence), say so
@@ -2263,6 +2329,71 @@ time
       ctx.beginPath(); ctx.moveTo(xt, y); ctx.lineTo(xt-5, y-3); ctx.lineTo(xt-5, y+3); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
+  }
+
+  // Forward/future-timestamp spikes: a corrupt sample whose timestamp jumped far
+  // ahead. Spikes are inherently rare (a handful of corrupt samples), so — unlike
+  // dup/ooo which can run to millions and go through the LOD pyramid — we draw them
+  // straight from spikeEvents. Each is drawn at its EXPECTED cadence slot (its bogus
+  // time is usually far off the right edge): a diamond + an arrow pointing right
+  // toward where the sample actually plotted.
+  function drawSpikes(ctx, w, h, t0, t1, span, y){
+    if(!spikeEvents.length) return;
+    ctx.save();
+    var color = "#9be84f";
+    ctx.fillStyle = color; ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 6;
+    for(var i=0;i<spikeEvents.length;i++){
+      var ev = spikeEvents[i];
+      // draw whenever any part of the should-be → actual span overlaps the window
+      // (expected < at; when zoomed onto the bogus position the expected slot is off
+      // the left edge, and vice-versa — either way the connector should still show)
+      if(ev.at < t0 || ev.expected > t1) continue;
+      var xe = ((ev.expected - t0)/span)*w;   // where it should sit (arrow tail / diamond)
+      var xa = ((ev.at - t0)/span)*w;          // where it actually plotted (arrow head)
+      // diamond at the expected slot, only when that slot is actually on screen
+      if(ev.expected >= t0 && ev.expected <= t1){
+        ctx.beginPath();
+        ctx.moveTo(xe, y-5); ctx.lineTo(xe+5, y); ctx.lineTo(xe, y+5); ctx.lineTo(xe-5, y); ctx.closePath(); ctx.fill();
+      }
+      // arrow from the expected slot to the bogus position, both ends clamped to the
+      // canvas so the connector stays visible at any zoom/pan
+      var xs = xe < 0 ? 0 : (xe > w ? w : xe);
+      var xh = xa < 0 ? 0 : (xa > w ? w : xa);
+      ctx.shadowBlur = 0;
+      if(xh - xs > 8){
+        ctx.lineWidth = 1.2; ctx.globalAlpha = 0.85;
+        ctx.beginPath(); ctx.moveTo(xs+6, y); ctx.lineTo(xh, y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(xh, y); ctx.lineTo(xh-5, y-3); ctx.lineTo(xh-5, y+3); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.shadowBlur = 6;
+    }
+    ctx.restore();
+  }
+
+  // Double-click on (or very near) an error → a target view that frames it: its two
+  // key positions land at ~30% and ~70% of the width, so the anomaly sits centred.
+  // Handles future-spikes (should-be ↔ actual), dropouts (gap start ↔ end) and
+  // out-of-order (in-order target ↔ actual). Returns {start,end} or null when the
+  // cursor isn't on an error (the caller then falls back to the zoom-toggle).
+  function frameForError(cursorT, w){
+    var span = (viewEnd - viewStart) || 1;
+    var tolNs = 14 * span / (w || 1);     // ~14px catch radius in time around the error
+    var best = null, bestD = Infinity;
+    function consider(lo, hi){
+      var d = cursorT < lo ? lo - cursorT : (cursorT > hi ? cursorT - hi : 0);
+      if(d <= tolNs && d < bestD){ bestD = d; best = { lo: lo, hi: hi }; }
+    }
+    for(var i=0;i<spikeEvents.length;i++){ var s = spikeEvents[i]; consider(Math.min(s.expected, s.at), Math.max(s.expected, s.at)); }
+    var gr = visibleGapRange(viewStart, viewEnd);
+    for(var g=gr.lo; g<gr.hi; g++) consider(gapEvents[g].start, gapEvents[g].end);
+    var orr = visibleOooRange(viewStart, viewEnd);
+    for(var o=orr.lo; o<orr.hi; o++){ var oe = oooEvents[o]; consider(Math.min(oe.target, oe.at), Math.max(oe.target, oe.at)); }
+    if(!best) return null;
+    var inner = best.hi - best.lo, newSpan = inner / 0.4, start;   // [lo,hi] spans 30%..70%
+    if(newSpan >= minWindowNs){ start = best.lo - 0.30 * newSpan; }
+    else { newSpan = minWindowNs; start = (best.lo + best.hi)/2 - newSpan/2; }   // tiny/point error: just centre it
+    return { start: start, end: start + newSpan };
   }
 
   // duplicate (Δt=0) and out-of-order (Δt<0) timestamps: point events with no
@@ -2504,6 +2635,25 @@ time
     ctx.restore();
   }
 
+  // A forward-spike sample's timestamp line, at its bogus (far-future) time, in the
+  // anomaly colour. Drawn directly from spikeEvents so it survives at any zoom (the
+  // pyramid lumps a sample's "present" at its bin start, hiding the line otherwise).
+  function drawSpikeTimestamps(ctx, w, h, t0, t1, span){
+    var top = 10, bot = h - 12;
+    ctx.save();
+    ctx.strokeStyle = "#9be84f"; ctx.lineWidth = 1.4;
+    ctx.shadowColor = "#9be84f"; ctx.shadowBlur = 4;
+    ctx.beginPath();
+    for(var i=0;i<spikeEvents.length;i++){
+      var at = spikeEvents[i].at;
+      if(at < t0 || at > t1) continue;
+      var x = ((at - t0)/span)*w;
+      ctx.moveTo(x+0.5, top); ctx.lineTo(x+0.5, bot);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // Per-message index labels (1-based) next to each visible sample. Shown only
   // when zoomed in far enough that no two adjacent labels would overlap — an
   // all-or-nothing gate (like the dup/ooo count labels), measured with
@@ -2534,9 +2684,17 @@ time
     ctx.save();
     ctx.font = '10px ui-monospace,monospace';
     ctx.textBaseline = "top";
-    var pad = 4, items = new Array(n);
+    var pad = 4;
+    // A forward-spike sample keeps its number at its bogus (far-future) time — which
+    // typically coincides with the legitimate sample that belongs at that instant.
+    // Keep spikes OUT of the all-or-nothing overlap gate (and colour them) so one
+    // corrupt sample can't collide with its time-neighbour and hide every number.
+    var spikeSet = null;
+    if(spikeEvents.length){ spikeSet = {}; for(var sp=0; sp<spikeEvents.length; sp++) spikeSet[spikeEvents[sp].idx] = 1; }
+    var items = [], spikes = [];
     for(var k=0;k<n;k++){
-      items[k] = { x: ((offsets[idxs[k]] - t0)/span)*w, label: String(idxs[k]+1) };  // 1-based
+      var it = { x: ((offsets[idxs[k]] - t0)/span)*w, label: String(idxs[k]+1) };  // 1-based
+      if(spikeSet && spikeSet[idxs[k]]) spikes.push(it); else items.push(it);
     }
     // sort by screen-x before the overlap test: out-of-order samples sit at their
     // true timestamp position (a later message can land left of its predecessor),
@@ -2544,12 +2702,18 @@ time
     // and wrongly hide every number on screen. The reordered label then renders
     // between its time-neighbours, which is exactly where it belongs.
     items.sort(function(a,b){ return a.x - b.x; });
-    // bail out entirely if any two adjacent labels would collide
-    for(var k=0;k<n-1;k++){
-      if(items[k].x + ctx.measureText(items[k].label).width + pad > items[k+1].x){ ctx.restore(); return; }
+    // show the normal labels only if none of them would collide (all-or-nothing)
+    var showNormal = true;
+    for(var k=0;k<items.length-1;k++){
+      if(items[k].x + ctx.measureText(items[k].label).width + pad > items[k+1].x){ showNormal = false; break; }
     }
-    ctx.fillStyle = "rgba(122,170,224,.95)";
-    for(var k=0;k<n;k++) ctx.fillText(items[k].label, items[k].x+2, 12);
+    if(showNormal){
+      ctx.fillStyle = "rgba(122,170,224,.95)";
+      for(var k=0;k<items.length;k++) ctx.fillText(items[k].label, items[k].x+2, 12);
+    }
+    // the rare spike labels always draw (in the spike colour), independent of the gate
+    ctx.fillStyle = "#9be84f";
+    for(var k=0;k<spikes.length;k++) ctx.fillText(spikes[k].label, spikes[k].x+2, 12);
     ctx.restore();
   }
 
@@ -2599,6 +2763,13 @@ time
     if(col.dup && col.ooo) for(var cc=0;cc<col.cols;cc++){
       if(col.dup[cc]){ ctx.fillStyle = "#3bd6e0"; ctx.fillRect(cc, 0, 1.5, 3.5); }
       if(col.ooo[cc]){ ctx.fillStyle = "#ff6fd0"; ctx.fillRect(cc, h-3.5, 1.5, 3.5); }
+    }
+    // forward-spike marks at their expected cadence slot (rare → drawn directly
+    // from spikeEvents, not threaded through the column aggregation)
+    ctx.fillStyle = "#9be84f";
+    for(var si=0; si<spikeEvents.length; si++){
+      var sx = (spikeEvents[si].expected/full)*w;
+      if(sx >= 0 && sx <= w) ctx.fillRect(sx-0.75, 0, 1.5, 6);
     }
     // viewport indicator
     var x0 = (viewStart/full)*w, x1 = (viewEnd/full)*w;
@@ -2739,6 +2910,7 @@ time
       cards.push(["Expected", fmtInt(stats.expected), burst?"in bursts":"", ""]);
       cards.push(["Missing", fmtInt(stats.dropped), lossPct.toFixed(2)+"%", stats.dropped>0?"bad":"good"]);
       cards.push(["Drop events", fmtInt(stats.events), "", stats.events>0?"bad":"good"]);
+      if(stats.spikes) cards.push(["Future spikes", fmtInt(stats.spikes), "corrupt ts", "bad"]);
       if(burst && stats.silences) cards.push(["Bursts", fmtInt(stats.runs), stats.silences+" silence"+(stats.silences===1?"":"s"), ""]);
     }
     if(!pontual) cards.push(["Too close", fmtInt(stats.tight), stats.tight>0 ? "min "+fmtGap(stats.tightest) : "", stats.tight>0?"tight":"good"]);
@@ -2752,11 +2924,12 @@ time
     var v = $("verdict"), vt = $("verdict-t"), vd = $("verdict-d");
     var hasDrops = stats.dropped > 0 || stats.events > 0;
     var hasTight = stats.tight > 0;
+    var hasSpike = stats.spikes > 0;
     if(pontual){
       v.className = "verdict clean";
       vt.textContent = "Sporadic stream";
       vd.textContent = "Arrivals are pontual (no regular cadence), so missing-message and too-close analysis don't apply. Typical gap "+fmtGap(intervalNs)+".";
-    } else if(!hasDrops && !hasTight){
+    } else if(!hasDrops && !hasTight && !hasSpike){
       v.className = "verdict clean";
       vt.textContent = burst ? "Burst stream — no anomalies within bursts" : "No timing anomalies";
       vd.textContent = burst
@@ -2767,10 +2940,12 @@ time
       v.className = "verdict loss";
       var parts = [];
       if(hasDrops) parts.push(fmtInt(stats.dropped)+" missing across "+fmtInt(stats.events)+" dropout"+(stats.events===1?"":"s"));
+      if(hasSpike) parts.push(fmtInt(stats.spikes)+" future-timestamp spike"+(stats.spikes===1?"":"s"));
       if(hasTight) parts.push(fmtInt(stats.tight)+" arrival"+(stats.tight===1?"":"s")+" under "+fmtGap(closeNs));
       vt.textContent = parts.join("  ·  ");
       var det = [];
       if(hasDrops) det.push("worst gap "+fmtGap(stats.worst)+" ≈ "+fmtInt(Math.max(0,Math.round(stats.worst/intervalNs)-1))+" samples");
+      if(hasSpike) det.push(fmtInt(stats.spikes)+" lone sample"+(stats.spikes===1?"":"s")+" jumped far ahead then the stream resumed cadence");
       if(hasTight) det.push("tightest "+fmtGap(stats.tightest));
       vd.textContent = det.join("  ·  ") + ". Nominal Δt "+fmtGap(intervalNs)+"."
         + (burst ? " Burst stream — missing counted only within bursts ("+coverPct.toFixed(1)+"% coverage"+(stats.silences?", "+stats.silences+" silence"+(stats.silences===1?"":"s")+" excluded":"")+")." : "");
@@ -2790,7 +2965,10 @@ time
       }
       extras.push(mNote);
     }
-    if(outOfOrder) extras.push(fmtInt(outOfOrder)+" out-of-order timestamp"+(outOfOrder===1?"":"s"));
+    // out-of-order uses the spike-adjusted count: a forward spike's successors are
+    // no longer blamed as "back-in-time"; the spike is reported on its own line.
+    if(stats.spikes) extras.push(fmtInt(stats.spikes)+" future-timestamp spike"+(stats.spikes===1?"":"s")+" (corrupt sample, not counted as missing)");
+    if(stats.outOfOrder) extras.push(fmtInt(stats.outOfOrder)+" out-of-order timestamp"+(stats.outOfOrder===1?"":"s"));
     if(duplicates) extras.push(fmtInt(duplicates)+" duplicate timestamp"+(duplicates===1?"":"s"));
     var aNote = $("anom-note");
     if(extras.length){ aNote.style.display="block"; aNote.textContent = extras.join("  ·  "); }
@@ -3058,10 +3236,23 @@ time
     traceCv.addEventListener("dblclick", function(ev){
       if(!stats) return;
       var full = stats.durationNs, span = viewEnd - viewStart;
+      var rect = traceCv.getBoundingClientRect();
+      var frac = Math.max(0, Math.min(1, (ev.clientX - rect.left)/rect.width));
+      var cursorT = viewStart + frac*span;
+      // double-click on an error → frame that error (centred at 30%/70%); a second
+      // double-click while already framing it resets to the full view
+      var tgt = frameForError(cursorT, rect.width);
+      if(tgt){
+        var tol = (tgt.end - tgt.start) * 0.02;
+        if(Math.abs(viewStart - tgt.start) < tol && Math.abs(viewEnd - tgt.end) < tol){
+          viewStart = 0; viewEnd = full;
+        } else {
+          viewStart = tgt.start; viewEnd = tgt.end; clampView();
+        }
+        scheduleDraw(); return;
+      }
       if(span >= full - 1){
         // already fully zoomed out → zoom all the way in at the cursor instead
-        var rect = traceCv.getBoundingClientRect();
-        var frac = Math.max(0, Math.min(1, (ev.clientX - rect.left)/rect.width));
         var anchor = viewStart + frac*span, newSpan = Math.min(minWindowNs, full);
         viewStart = anchor - frac*newSpan; viewEnd = viewStart + newSpan;
         clampView();
@@ -3722,7 +3913,7 @@ time
   // (Re)build one device card: identity line, file inventory, and a stream
   // table whose stats cells fill in as the background scan completes.
   // colour each problem kind to match the trace's anomaly palette
-  var PROB_COLORS = { miss:"var(--drop)", tight:"var(--tight)", ooo:"var(--ooo)", dup:"var(--dup)", malformed:"var(--warn)" };
+  var PROB_COLORS = { miss:"var(--drop)", tight:"var(--tight)", ooo:"var(--ooo)", dup:"var(--dup)", spike:"var(--spike)", malformed:"var(--warn)" };
 
   // Roll a stream's anomaly counts into one "potential problems" total plus a
   // structured breakdown ({kind,text,where}) for the hover popup. Pontual streams
@@ -3735,6 +3926,7 @@ time
     if(miss) items.push({ kind:"miss", text: fmtInt(miss) + " missing message" + (miss === 1 ? "" : "s")
       + (st.drops ? " across " + fmtInt(st.drops) + " dropout" + (st.drops === 1 ? "" : "s") : "") });
     if(st.tight)      items.push({ kind:"tight", text: fmtInt(st.tight) + " too-close arrival" + (st.tight === 1 ? "" : "s") });
+    if(st.spikes)     items.push({ kind:"spike", text: fmtInt(st.spikes) + " future-timestamp spike" + (st.spikes === 1 ? "" : "s") });
     if(st.outOfOrder) items.push({ kind:"ooo", text: fmtInt(st.outOfOrder) + " out-of-order timestamp" + (st.outOfOrder === 1 ? "" : "s") });
     if(st.duplicates) items.push({ kind:"dup", text: fmtInt(st.duplicates) + " duplicate timestamp" + (st.duplicates === 1 ? "" : "s") });
     if(st.malformed){
@@ -3745,7 +3937,7 @@ time
         : "";
       items.push({ kind:"malformed", text: fmtInt(st.malformed) + " unparseable line" + (st.malformed === 1 ? "" : "s") + " skipped", where: where });
     }
-    var total = miss + (st.tight || 0) + (st.outOfOrder || 0) + (st.duplicates || 0) + (st.malformed || 0);
+    var total = miss + (st.tight || 0) + (st.spikes || 0) + (st.outOfOrder || 0) + (st.duplicates || 0) + (st.malformed || 0);
     return { total: total, items: items };
   }
 
@@ -5370,10 +5562,15 @@ time
     // timestamp-quality tallies, mirroring the full analyzer's anomaly note: a
     // backwards step (g<0), a repeated stamp (g===0), a spacing under the close
     // floor (closeFactor×Δt), and lines the walker couldn't parse.
-    var outOfOrder = 0, duplicates = 0, tight = 0, malformed = 0, closeFloor = 0;
+    var outOfOrder = 0, duplicates = 0, tight = 0, malformed = 0, closeFloor = 0, spikes = 0;
     var curFile = null, mfMap = {}, mfOrder = [];   // per-file malformed tally
     var regular = false, silenceNs = Infinity;
-    function judge(g){
+    var pend = null;   // a deferred dropout-sized +gap (possible into-spike), awaiting the next gap to confirm
+    // Tally a finalized gap (one NOT consumed by a spike): a backwards step, a
+    // duplicate, a dropout (+ its in-data-silence subset), and a too-close spacing.
+    function tally(g){
+      if(g < 0) outOfOrder++;
+      else if(g === 0) duplicates++;
       if(dtNs > 0 && g > dtNs * tolerance){
         var m = Math.max(1, Math.round(g / dtNs) - 1);
         drops++; missing += m;
@@ -5381,22 +5578,42 @@ time
       }
       if(closeFloor > 0 && g > 0 && g < closeFloor) tight++;   // strictly positive: a 0-gap is a duplicate, not too-close
     }
+    // Spike-aware classifier with one-gap look-back, mirroring analyze(): a deferred
+    // dropout-sized +gap (pend) that is immediately followed by a dropout-sized
+    // backward step, with the stream resuming cadence (0 < resume ≤ SPIKE_RESUME_K·Δt),
+    // is a forward/future-timestamp spike — neither a dropout nor an out-of-order.
+    // Spike detection needs Δt, so it only runs post-settle (pre-settle gaps buffer).
+    function classify(g){
+      var thr = dtNs * tolerance;
+      if(pend !== null){
+        var pg = pend; pend = null;
+        if(dtNs > 0 && g < 0 && -g > thr && pg > thr){
+          var resume = pg + g;
+          if(resume > 0 && resume <= dtNs * SPIKE_RESUME_K && resume < silenceNs){
+            spikes++;          // pg (into-spike) + g (back-step) both consumed by the spike
+            return;
+          }
+        }
+        tally(pg);             // pg wasn't into a spike → an ordinary dropout
+      }
+      if(dtNs > 0 && g > thr){ pend = g; return; }   // defer: this might be an into-spike gap
+      tally(g);
+    }
+    function flushPend(){ if(pend !== null){ tally(pend); pend = null; } }   // a trailing deferred gap is a real dropout (no recovery sample)
     function settle(){
       settled = true;
       dtNs = buf.length ? detectInterval(buf) : 0;
       closeFloor = closeFactor * dtNs;
       var r = streamRegularity(buf, dtNs, tolerance);   // cadence + silence band from the buffer
       regular = r.regular; silenceNs = r.silenceNs;
-      for(var i=0; i<buf.length; i++) judge(buf[i]);
+      for(var i=0; i<buf.length; i++) classify(buf[i]);
       buf = null;
     }
     function add(tsNs){
       count++;
       if(prev !== null){
         var g = Number(tsNs - prev);
-        if(g < 0) outOfOrder++;
-        else if(g === 0) duplicates++;
-        if(settled) judge(g);
+        if(settled) classify(g);
         else { buf.push(g); if(buf.length >= CAP) settle(); }
       }
       prev = tsNs;
@@ -5411,6 +5628,7 @@ time
     function file(name){ curFile = name; }   // scanStream marks each file boundary
     function done(){
       if(!settled) settle();
+      flushPend();   // any deferred dropout-sized gap at the very end is a genuine dropout
       var type, mOut, dOut;
       if(!regular || !(dtNs > 0) || count < 2){ type = "pontual"; mOut = 0; dOut = 0; }
       else {
@@ -5425,7 +5643,7 @@ time
       // silenceNs (the inter-burst gap floor) lets the combined chart break the
       // line across bursts instead of connecting them; only meaningful for burst
       return { count: count, dtNs: dtNs, drops: dOut, missing: mOut, type: type,
-               outOfOrder: outOfOrder, duplicates: duplicates, tight: tOut, malformed: malformed,
+               outOfOrder: outOfOrder, duplicates: duplicates, tight: tOut, malformed: malformed, spikes: spikes,
                malformedFiles: mfOrder.map(function(n){ return { name: n, count: mfMap[n].count, firstLine: mfMap[n].firstLine }; }),
                silenceNs: (type === "burst" && isFinite(silenceNs)) ? silenceNs : null };
     }
@@ -5540,7 +5758,7 @@ time
     scanStream(task.stream, ep).then(function(res){
       if(!scanState || scanState.epoch !== ep) return;
       task.stream.stats = res || { count: 0, dtNs: 0, drops: 0, missing: 0, type: "pontual",
-                                   outOfOrder: 0, duplicates: 0, tight: 0, malformed: 0, malformedFiles: [] };
+                                   outOfOrder: 0, duplicates: 0, tight: 0, malformed: 0, spikes: 0, malformedFiles: [] };
       if(task.dev._card) fillDevCard(task.dev);
       scanState.idx++;
       pumpScan();

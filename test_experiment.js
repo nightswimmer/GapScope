@@ -58,6 +58,20 @@ body += `
   G(){ return { firstNs, offsets, gaps, channelNames, channelCount, malformed }; },
   setScan(st){ scanState = st; },
   scanStream,
+  analyze,
+  // load a synthetic offsets array + analysis env, then read back the verdict bits
+  setSynthetic(off, env){
+    offsets = off.slice(); gaps = [];
+    for(var i=1;i<offsets.length;i++) gaps.push(offsets[i]-offsets[i-1]);
+    spikeGaps = null; pyrSpikeKey = ""; pyramid = null;
+    channelCount = 0; channels = []; experiment = null; refOriginNs = null;
+    intervalNs = env.intervalNs;
+    tolerance = (env.tolerance != null) ? env.tolerance : 1.5;
+    timelineNs = env.timelineNs;
+    streamType = env.streamType || "auto";
+    closeFactor = (env.closeFactor != null) ? env.closeFactor : 0.9;
+  },
+  A(){ return { stats: stats, spikes: spikeEvents, ooo: oooEvents, gapEvents: gapEvents }; },
 };`;
 new Function(body)();
 const t = global.__t;
@@ -255,6 +269,67 @@ function check(label, cond, detail){
     check("constant stats: full coverage counts every drop",
           res2.type === "constant" && res2.drops === 3 && res2.missing === 6,
           JSON.stringify({ type: res2.type, missing: res2.missing, drops: res2.drops }));
+  }
+
+  // 6d. forward-jump-aware anomaly detection (analyze + makeStatsAcc). One sample
+  // whose timestamp jumps far into the future must be flagged as ONE spike — not a
+  // ~100-message dropout plus a back-in-time out-of-order on its successor.
+  {
+    const DT = 1e7;                      // 10 ms cadence
+    const N = 200, K = 100;              // spike at index K
+    // (A) lone forward spike: every sample on cadence except offsets[K] +1 s
+    const spike = [];
+    for (let i = 0; i < N; i++) spike.push(i * DT + (i === K ? 1e9 : 0));
+    t.setSynthetic(spike, { intervalNs: DT, tolerance: 1.5, timelineNs: N * DT });
+    t.analyze();
+    let a = t.A();
+    check("spike: type constant", a.stats.type === "constant", a.stats.type);
+    check("spike: 1 future-timestamp spike, 0 missing, 0 out-of-order",
+          a.stats.spikes === 1 && a.stats.dropped === 0 && a.stats.events === 0 && a.stats.outOfOrder === 0,
+          JSON.stringify({ spikes: a.stats.spikes, missing: a.stats.dropped, drops: a.stats.events, ooo: a.stats.outOfOrder }));
+    check("spike: marked at its expected cadence slot",
+          a.spikes.length === 1 && a.spikes[0].expected === (K - 1) * DT + DT && a.spikes[0].at === K * DT + 1e9,
+          JSON.stringify(a.spikes[0]));
+
+    // (B) genuine 1 s outage (everything after K shifted later, no back-step) stays
+    // a dropout with ~100 missing — unchanged
+    const drop = [];
+    for (let i = 0; i < N; i++) drop.push(i * DT + (i >= K ? 1e9 : 0));
+    t.setSynthetic(drop, { intervalNs: DT, tolerance: 1.5, timelineNs: 3e9 });
+    t.analyze();
+    a = t.A();
+    check("genuine dropout unchanged: 0 spikes, 1 dropout, 100 missing",
+          a.stats.spikes === 0 && a.stats.events === 1 && a.stats.dropped === 100 && a.stats.outOfOrder === 0,
+          JSON.stringify({ spikes: a.stats.spikes, drops: a.stats.events, missing: a.stats.dropped, ooo: a.stats.outOfOrder }));
+
+    // (C) genuine adjacent swap (K and K+1 transposed) stays out-of-order — the
+    // back-step is only ~1 interval, far smaller than a spike's
+    const swap = [];
+    for (let i = 0; i < N; i++) swap.push(i * DT);
+    swap[K] = (K + 1) * DT; swap[K + 1] = K * DT;
+    t.setSynthetic(swap, { intervalNs: DT, tolerance: 1.5, timelineNs: N * DT });
+    t.analyze();
+    a = t.A();
+    check("adjacent swap unchanged: 0 spikes, 1 out-of-order",
+          a.stats.spikes === 0 && a.stats.outOfOrder === 1,
+          JSON.stringify({ spikes: a.stats.spikes, ooo: a.stats.outOfOrder, drops: a.stats.events }));
+
+    // makeStatsAcc (background scan) must agree on the spike vs. the dropout
+    const accS = t.makeStatsAcc(N * DT);
+    for (let i = 0; i < N; i++) accS.add(BigInt(i) * BigInt(DT) + (i === K ? 1000000000n : 0n));
+    const rS = accS.done();
+    check("scan agrees: spike → 1 spike, 0 missing, 0 out-of-order",
+          rS.type === "constant" && rS.spikes === 1 && rS.missing === 0 && rS.drops === 0 && rS.outOfOrder === 0,
+          JSON.stringify({ type: rS.type, spikes: rS.spikes, missing: rS.missing, drops: rS.drops, ooo: rS.outOfOrder }));
+
+    const accD = t.makeStatsAcc(3e9);
+    for (let i = 0; i < N; i++) accD.add(BigInt(i) * BigInt(DT) + (i >= K ? 1000000000n : 0n));
+    const rD = accD.done();
+    check("scan agrees: genuine outage → 0 spikes, 1 drop, 100 missing",
+          rD.spikes === 0 && rD.drops === 1 && rD.missing === 100 && rD.outOfOrder === 0,
+          JSON.stringify({ spikes: rD.spikes, drops: rD.drops, missing: rD.missing, ooo: rD.outOfOrder }));
+
+    t.setSynthetic([], { intervalNs: 1e6, timelineNs: 0 });   // clear the synthetic globals so later tests see a clean offsets array
   }
 
   // 7. splitByFolders classification
