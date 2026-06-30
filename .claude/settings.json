@@ -4,9 +4,10 @@
       "Read",
       "Edit",
       "Write",
-      "Bash(*)",
+      "Cat(*)",
       "WebFetch(domain:harp-tech.org)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(python -m http.server 8000 --bind 127.0.0.1)"
     ],
     "deny": [
       "Bash(rm -rf *)"

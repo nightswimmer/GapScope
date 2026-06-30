@@ -605,6 +605,7 @@ time
           <label class="chk"><input type="checkbox" id="show-raw"> Show Raw Data</label>
           <label class="chk"><input type="checkbox" id="show-anom" checked> Show Anomalies</label>
           <label class="chk"><input type="checkbox" id="show-ts"> Show All Timestamps</label>
+          <label class="chk"><input type="checkbox" id="show-msgnum"> Show Message Number</label>
         </div>
         <div class="zoom-ctl">
           <span class="hint">scroll to zoom · drag to select · right-drag to pan · double-click to reset</span>
@@ -698,7 +699,7 @@ time
   var channelNames = [];     // header-derived names, length = channelCount
   var channelCount = 0;
   var chMin = [], chMax = []; // per-channel global value range
-  var showRaw = false, showAnom = true, showTs = false;  // view-layer toggles
+  var showRaw = false, showAnom = true, showTs = false, showMsgNum = false;  // view-layer toggles
   var chanHidden = [];       // chanHidden[k] true → raw channel k hidden (legend toggle)
   var malformed = 0, outOfOrder = 0, duplicates = 0;
   var malformedFiles = [];   // [{name,count}] — which files held the unparseable lines
@@ -743,6 +744,7 @@ time
   var gapEvents = [];        // {start, end, gapNs, missing}
   var tightEvents = [];      // {start, gapNs} for spacings below closeNs
   var oooEvents = [];        // out-of-order: {at, target} sorted by at — at=msg's (too-early) time, target=where it'd sit to be in order
+  var msgRuns = [0];         // start index of each monotonic run of offsets (boundaries at out-of-order steps), for time-range queries on non-monotonic offsets
   var eventList = [];        // merged anomalies sorted by time: {t, kind, gapNs, missing}
   var eventTimes = [];       // parallel array of t for binary search
   var silenceEvents = [];    // {start, end, gapNs} inter-burst silences (burst streams only)
@@ -1651,6 +1653,11 @@ time
     tightEvents = [];
     silenceEvents = [];
     oooEvents = [];
+    // offsets is non-decreasing EXCEPT at out-of-order steps (g<0); those break
+    // points split it into sorted "runs". msgRuns holds each run's start index so
+    // a time-range query (the message-number renderer) can binary-search within a
+    // run instead of trusting a global binary search the reorders would mislead.
+    msgRuns = [0];
     var worst = 0, missSum = 0, tightest = Infinity, runs = 1;
     for(var i=0;i<gaps.length;i++){
       var g = gaps[i];
@@ -1665,8 +1672,10 @@ time
         gapEvents.push({ start: offsets[i], end: offsets[i+1], gapNs: g, missing: miss });
       } else if(g < 0){
         // out-of-order: the sample sits at offsets[i+1] (earlier than its
-        // predecessor offsets[i]); to be in order it would need offsets[i]'s time
+        // predecessor offsets[i]); to be in order it would need offsets[i]'s time.
+        // It also starts a new monotonic run at i+1.
         oooEvents.push({ at: offsets[i+1], target: offsets[i] });
+        msgRuns.push(i+1);
       }
       // too-close is measured against the cadence floor; a pontual stream has no
       // cadence, so the concept doesn't apply. A 0-gap is a duplicate, not "too
@@ -2185,10 +2194,10 @@ time
       if(showAnom) overlayAnomBands(ctx, w, h, t0, t1, span, col);
     } else if(showAnom){
       drawAnomBipolar(ctx, w, h, t0, t1, span, col, threshold, baseY);
-    } else if(!showTs){
+    } else if(!showTs && !showMsgNum){
       ctx.font = '12px ui-monospace,monospace';
       ctx.fillStyle = "rgba(116,132,154,.7)"; ctx.textAlign = "center";
-      var msg = (showRaw && channelCount===0) ? "No data columns in this file" : "Enable “Show Raw Data”, “Show Anomalies” or “Show All Timestamps”";
+      var msg = (showRaw && channelCount===0) ? "No data columns in this file" : "Enable “Show Raw Data”, “Show Anomalies”, “Show All Timestamps” or “Show Message Number”";
       ctx.fillText(msg, w/2, h/2); ctx.textAlign = "start";
     }
 
@@ -2210,6 +2219,9 @@ time
 
     // mark where the camera video actually has frames (track + dimmed gaps)
     vidDrawCoverage(ctx, "trace", function(o){ return ((o - t0)/span)*w; }, t0, t1, 0, w, 0, h);
+
+    // per-message index labels, drawn last so they sit on top of every layer
+    if(showMsgNum) drawMsgNumbers(ctx, w, h, t0, t1, span);
 
     traceData = { col: col, w: w, baseY: baseY, topY: 14, threshold: threshold, raw: rawOn };
   }
@@ -2492,6 +2504,55 @@ time
     ctx.restore();
   }
 
+  // Per-message index labels (1-based) next to each visible sample. Shown only
+  // when zoomed in far enough that no two adjacent labels would overlap — an
+  // all-or-nothing gate (like the dup/ooo count labels), measured with
+  // ctx.measureText so a wide number (e.g. 1000000) is accounted for.
+  function drawMsgNumbers(ctx, w, h, t0, t1, span){
+    // Collect the index of every sample whose timestamp is in [t0,t1]. offsets is
+    // non-decreasing EXCEPT at out-of-order steps, so a single global binary search
+    // is unreliable: a forward-jumped sample (corrupt timestamp far in the future)
+    // sticks up and would stop a forward scan early, hiding every real sample that
+    // follows it at its correct (earlier) time. Instead query each monotonic run
+    // (msgRuns) separately — within a run, offsets IS sorted, so binary search +
+    // a short in-range walk is correct and stays O(visible).
+    var idxs = [];
+    for(var ri = 0; ri < msgRuns.length; ri++){
+      var s = msgRuns[ri], e = (ri+1 < msgRuns.length) ? msgRuns[ri+1] : offsets.length;
+      if(e <= s) continue;
+      if(offsets[e-1] < t0 || offsets[s] > t1) continue;          // run wholly off-screen
+      var lo = s, hi = e;                                          // first index in run with offset >= t0
+      while(lo < hi){ var m = (lo+hi)>>1; if(offsets[m] < t0) lo = m+1; else hi = m; }
+      for(var i = lo; i < e; i++){
+        if(offsets[i] > t1) break;
+        idxs.push(i);
+        if(idxs.length > 4000){ return; }                         // too dense to read
+      }
+    }
+    var n = idxs.length;
+    if(n <= 0) return;
+    ctx.save();
+    ctx.font = '10px ui-monospace,monospace';
+    ctx.textBaseline = "top";
+    var pad = 4, items = new Array(n);
+    for(var k=0;k<n;k++){
+      items[k] = { x: ((offsets[idxs[k]] - t0)/span)*w, label: String(idxs[k]+1) };  // 1-based
+    }
+    // sort by screen-x before the overlap test: out-of-order samples sit at their
+    // true timestamp position (a later message can land left of its predecessor),
+    // so comparing index-adjacent labels would see a negative gap at the reorder
+    // and wrongly hide every number on screen. The reordered label then renders
+    // between its time-neighbours, which is exactly where it belongs.
+    items.sort(function(a,b){ return a.x - b.x; });
+    // bail out entirely if any two adjacent labels would collide
+    for(var k=0;k<n-1;k++){
+      if(items[k].x + ctx.measureText(items[k].label).width + pad > items[k+1].x){ ctx.restore(); return; }
+    }
+    ctx.fillStyle = "rgba(122,170,224,.95)";
+    for(var k=0;k<n;k++) ctx.fillText(items[k].label, items[k].x+2, 12);
+    ctx.restore();
+  }
+
   // ---------- draw: heatmap ----------
   var heatData = null;
   function drawHeat(){
@@ -2646,6 +2707,7 @@ time
     rawCb.checked = showRaw;
     $("show-anom").checked = showAnom;
     $("show-ts").checked = showTs;
+    $("show-msgnum").checked = showMsgNum;
     buildChannelLegend();
     $("th-time-drop").textContent = "Start time " + timeColHeader();
     $("th-time-tight").textContent = "Time " + timeColHeader();
@@ -2993,9 +3055,20 @@ time
     });
     // right button is the pan gesture — suppress the browser context menu
     traceCv.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });
-    traceCv.addEventListener("dblclick", function(){
+    traceCv.addEventListener("dblclick", function(ev){
       if(!stats) return;
-      viewStart = 0; viewEnd = stats.durationNs; scheduleDraw();
+      var full = stats.durationNs, span = viewEnd - viewStart;
+      if(span >= full - 1){
+        // already fully zoomed out → zoom all the way in at the cursor instead
+        var rect = traceCv.getBoundingClientRect();
+        var frac = Math.max(0, Math.min(1, (ev.clientX - rect.left)/rect.width));
+        var anchor = viewStart + frac*span, newSpan = Math.min(minWindowNs, full);
+        viewStart = anchor - frac*newSpan; viewEnd = viewStart + newSpan;
+        clampView();
+      } else {
+        viewStart = 0; viewEnd = full;
+      }
+      scheduleDraw();
     });
 
     // ---- heatmap: hover + click/drag navigation ----
@@ -3111,7 +3184,7 @@ time
       // Δt itself is never persisted: registers run at different rates, so each
       // loaded stream re-detects its own nominal interval. Only the relative
       // thresholds (multipliers of Δt) and view preferences are kept.
-      var s = { tolerance: tolerance, closeFactor: closeFactor, showRaw: showRaw, showAnom: showAnom, showTs: showTs };
+      var s = { tolerance: tolerance, closeFactor: closeFactor, showRaw: showRaw, showAnom: showAnom, showTs: showTs, showMsgNum: showMsgNum };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
     }catch(e){ /* storage unavailable (private mode, etc.) — ignore */ }
   }
@@ -3127,6 +3200,7 @@ time
     if(typeof s.showRaw === "boolean") showRaw = s.showRaw;
     if(typeof s.showAnom === "boolean") showAnom = s.showAnom;
     if(typeof s.showTs === "boolean") showTs = s.showTs;
+    if(typeof s.showMsgNum === "boolean") showMsgNum = s.showMsgNum;
   }
   // mirror the current settings (globals) into the on-screen controls
   function reflectSettings(){
@@ -3135,6 +3209,7 @@ time
     $("show-raw").checked = showRaw;
     $("show-anom").checked = showAnom;
     $("show-ts").checked = showTs;
+    $("show-msgnum").checked = showMsgNum;
   }
 
   // ---------- file handling ----------
@@ -5631,9 +5706,19 @@ time
       ev.preventDefault();
     });
     cv.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });   // right-drag is pan
-    cv.addEventListener("dblclick", function(){
+    cv.addEventListener("dblclick", function(ev){
       if(!chartData) return;
-      cvStart = cvBase; cvEnd = cvBase + (cvFull || 1); cvSelRect = null; scheduleChart();
+      var full = cvFull || 1, span = cvEnd - cvStart;
+      if(span >= full - 1){
+        // already fully zoomed out → zoom all the way in at the cursor instead
+        var frac = plotFrac(ev.clientX);
+        var anchor = cvStart + frac*span, newSpan = Math.min(chartMinWindow(), full);
+        cvStart = anchor - frac*newSpan; cvEnd = cvStart + newSpan;
+        clampChart();
+      } else {
+        cvStart = cvBase; cvEnd = cvBase + full;
+      }
+      cvSelRect = null; scheduleChart();
     });
     // hover readout: the cursor's time + each visible line's value at that time
     var ro = $("chart-ro");
@@ -5741,6 +5826,7 @@ time
   $("show-raw").addEventListener("change", function(){ showRaw = this.checked; saveSettings(); refreshView(); });
   $("show-anom").addEventListener("change", function(){ showAnom = this.checked; saveSettings(); refreshView(); });
   $("show-ts").addEventListener("change", function(){ showTs = this.checked; saveSettings(); refreshView(); });
+  $("show-msgnum").addEventListener("change", function(){ showMsgNum = this.checked; saveSettings(); refreshView(); });
   // click a raw-channel legend entry to show/hide that channel
   $("chan-legend").addEventListener("click", function(e){
     var it = e.target.closest(".item[data-k]"); if(!it) return;
